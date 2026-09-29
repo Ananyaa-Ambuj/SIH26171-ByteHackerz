@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Privag AI — Browser Agent Firewall</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="sidepanel-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">🛡️</div>
+        <div>
+          <h1 class="title">Privag AI</h1>
+          <p class="subtitle">On-Device PII Firewall & Agent</p>
+        </div>
+      </div>
+      <div class="badges">
+        <span id="serverBadge" class="badge badge-offline">Server: Offline</span>
+        <span id="modelBadge" class="badge badge-purple">WebGPU: Init</span>
+      </div>
+    </header>
+
+    <!-- Server Settings Bar -->
+    <section class="section card settings-card">
+      <div class="settings-header" id="settingsToggle">
+        <span class="settings-title">⚙️ Server Configuration</span>
+        <span id="settingsArrow" class="arrow">▼</span>
+      </div>
+      <div class="settings-body" id="settingsBody">
+        <label for="serverUrlInput" class="input-label">Flask Server URL</label>
+        <div class="input-group">
+          <input type="text" id="serverUrlInput" class="text-input" placeholder="http://localhost:5000" value="http://localhost:5000" />
+          <button id="saveServerUrlBtn" class="btn btn-secondary btn-sm">Save</button>
+        </div>
+        <p class="help-text">Endpoint used to dispatch sanitized perception & get actions.</p>
+      </div>
+    </section>
+
+    <!-- Task Input Section -->
+    <section class="section card">
+      <label for="taskInput" class="input-label">Agent Task / Goal</label>
+      <textarea id="taskInput" class="textarea-input" rows="2" placeholder="e.g. Click the login button and proceed..."></textarea>
+
+      <!-- Action Buttons -->
+      <div class="btn-grid">
+        <button id="stepButton" class="btn btn-primary">
+          <span class="btn-icon">⚡</span> Run AI Step
+        </button>
+        <button id="sanitizeButton" class="btn btn-secondary">
+          <span class="btn-icon">👁️</span> Sanitize Only
+        </button>
+        <button id="clearButton" class="btn btn-ghost">Clear</button>
+      </div>
+    </section>
+
+    <!-- Visual Perception Canvas Preview -->
+    <section class="section card">
+      <div class="card-header">
+        <span class="card-title">Sanitized Perception (Client-Side)</span>
+        <span id="privacyStatus" class="tag tag-safe">100% Zero Leakage</span>
+      </div>
+      <div class="canvas-wrapper">
+        <canvas id="screenshotCanvas"></canvas>
+        <div id="canvasPlaceholder" class="canvas-placeholder">
+          <span>Click "Run AI Step" or "Sanitize Only" to inspect sanitized page</span>
+        </div>
+      </div>
+      <div class="metrics-bar">
+        <span>Vision: <strong id="visionLatency">—</strong></span>
+        <span>Server: <strong id="serverLatency">—</strong></span>
+        <span>Redactions: <strong id="redactionCount">0</strong></span>
+      </div>
+    </section>
+
+    <!-- Upstream Agent Decision Card -->
+    <section class="section card">
+      <div class="card-header">
+        <span class="card-title">Upstream VLM Decision</span>
+        <span id="actionVerbBadge" class="badge badge-neutral">IDLE</span>
+      </div>
+      <div class="action-details">
+        <div class="action-row">
+          <span class="label">Target:</span>
+          <span id="actionTarget" class="value">—</span>
+        </div>
+        <div class="action-row">
+          <span class="label">Coords:</span>
+          <span id="actionCoords" class="value">—</span>
+        </div>
+        <div class="action-row">
+          <span class="label">Value:</span>
+          <span id="actionValue" class="value">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Real-Time Audit Log -->
+    <section class="section card">
+      <div class="card-header">
+        <span class="card-title">Firewall Audit Log</span>
+      </div>
+      <div id="auditLog" class="audit-log">
+        <div class="log-entry log-info">[System] Privag AI Side Panel ready.</div>
+      </div>
+    </section>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,15 +1,27 @@
 {
 	"manifest_version": 3,
-
-	"name": "SIH Prototype",
-
+	"name": "Privag AI",
 	"version": "1.0",
-
-	"permissions": ["tabs", "scripting", "activeTab", "offscreen"],
-	"host_permissions":[
-		"http://localhost:5000/*"
+	"permissions": [
+		"tabs",
+		"scripting",
+		"activeTab",
+		"offscreen",
+		"sidePanel",
+		"storage"
 	],
-   		"action": {
-		"default_popup": "popup.html"
+	"host_permissions": [
+		"http://localhost:5000/*",
+		"http://127.0.0.1:5000/*",
+		"<all_urls>"
+	],
+	"background": {
+		"service_worker": "background.js"
+	},
+	"side_panel": {
+		"default_path": "sidepanel.html"
+	},
+	"action": {
+		"default_title": "Open Privag AI Side Panel"
 	}
 }
