@@ -6,8 +6,10 @@
 	"version": "1.0",
 
 	"permissions": ["tabs", "scripting", "activeTab", "offscreen"],
-
-	"action": {
+	"host_permissions":[
+		"http://localhost:5000/*"
+	],
+   		"action": {
 		"default_popup": "popup.html"
 	}
 }
