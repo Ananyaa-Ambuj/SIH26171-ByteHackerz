@@ -1,17 +1,13 @@
 {
-    "manifest_version": 3,
+	"manifest_version": 3,
 
-    "name": "SIH Prototype",
+	"name": "SIH Prototype",
 
-    "version": "1.0",
+	"version": "1.0",
 
-    "permissions": [
-        "tabs",
-        "scripting",
-        "activeTab"
-    ],
+	"permissions": ["tabs", "scripting", "activeTab", "offscreen"],
 
-    "action": {
-        "default_popup": "popup.html"
-    }
+	"action": {
+		"default_popup": "popup.html"
+	}
 }
