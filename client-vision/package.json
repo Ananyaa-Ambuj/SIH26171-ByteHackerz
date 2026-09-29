@@ -4,7 +4,8 @@
 	"description": "",
 	"main": "index.js",
 	"scripts": {
-		"build": "esbuild worker.js --bundle --format=esm --platform=browser --target=chrome120 --outfile=../extension/florence-worker.bundle.js"
+		"build": "esbuild worker.js --bundle --format=esm --platform=browser --target=chrome120 --outfile=../extension/florence-worker.bundle.js",
+		"build:local": "esbuild worker.js --bundle --format=esm --platform=browser --target=chrome120 --outfile=florence-worker.bundle.js"
 	},
 	"keywords": [],
 	"author": "",
