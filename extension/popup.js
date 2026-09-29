@@ -117,6 +117,16 @@ document.getElementById("screenshotButton").addEventListener("click", async () =
 
             result.textContent = "Screenshot captured successfully.";
 
+           image.onload = function () {
+              //A variable canvas for data transformation
+              const canvas = document.createElement("canvas");
+              canvas.width = image.width;
+              canvas.height = image.height;
+              const ctx = canvas.getContext("2d");
+              
+         ctx.drawImage(image, 0, 0);   
+              kkkkkkkkkkk
+      
         };
 
         image.onerror = function () {
