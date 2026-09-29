@@ -9,13 +9,23 @@ h2 {
 }
 
 button {
-    padding: 10px 15px;
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 8px;
     cursor: pointer;
 }
+canvas {
+            width: 100%;
+            border: 1px solid black;
+            margin-top: 10px;
+            display: block;
+        }
 
 #result {
-    margin-top: 15px;
+    margin-top: 10px;
     max-height: 300px;
     overflow-y: auto;
     white-space: pre-wrap;
+    word-wrap: break-word;
 }

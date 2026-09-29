@@ -1,6 +1,19 @@
+const result = document.getElementById("result");
+
+const canvas = document.getElementById("screenshotCanvas");
+
+const ctx = canvas.getContext("2d");
+
+
 document.getElementById("readButton").addEventListener("click", async () => {
 
-    const result = document.getElementById("result");
+   
+   
+    
+    //variable for screenshot
+    let originalImage = null;
+    
+
 
     result.textContent = "Reading page...";
 
@@ -56,6 +69,72 @@ document.getElementById("readButton").addEventListener("click", async () => {
 
         result.textContent =
             "Error: " + error.message;
+
+    }
+
+});
+
+document.getElementById("screenshotButton").addEventListener("click", async () => {
+
+    try {
+
+        // Get the current active tab
+        const tabs = await chrome.tabs.query({
+            active: true,
+            currentWindow: true
+        });
+
+        const currentTab = tabs[0];
+
+        console.log("Current tab:", currentTab);
+
+        // Take screenshot of the current window
+        const screenshot = await chrome.tabs.captureVisibleTab(
+            currentTab.windowId,
+            {
+                format: "png"
+            }
+        );
+
+        console.log("Screenshot captured!");
+
+        // Create image
+        const image = new Image();
+
+        image.onload = function () {
+
+            console.log("Image loaded!");
+
+            // Set canvas size
+            canvas.width = image.width;
+            canvas.height = image.height;
+
+            // Draw screenshot
+            ctx.drawImage(image, 0, 0);
+
+            // Save original image
+            originalImage = image;
+
+            result.textContent = "Screenshot captured successfully.";
+
+        };
+
+        image.onerror = function () {
+
+            console.error("Image could not be loaded.");
+
+            result.textContent = "Screenshot was captured but image could not be loaded.";
+
+        };
+
+        image.src = screenshot;
+
+    } catch (error) {
+
+        console.error("SCREENSHOT ERROR:", error);
+
+        result.textContent =
+            "Screenshot error: " + error.message;
 
     }
 
