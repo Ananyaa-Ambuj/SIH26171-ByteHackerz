@@ -3,9 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Privag AI - Dashboard</title>
+    <title>Privag AI - Server Configuration</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
+
 <body>
-    
+    <h1>Privag AI — Gateway Setup</h1>
+    <p style="color: #555; font-size: 14px; margin-bottom: 24px;">Configure the LLM backend.</p>
+
+    <div id="alertBox" class="alert">Configuration saved!</div>
+
+    <form id="setupForm" onsubmit="event.preventDefault(); save();">
+        <h2>1. LLM Backend (OpenAI-Compatible)</h2>
+
+        <div class="form-group">
+            <label for="llmUrl">LLM API Base URL</label>
+            <div class="hint">Compatible with local vLLM, Ollama, LM Studio, or cloud providers (e.g. <code>http://localhost:11434/v1</code>, <code>http://192.168.1.100:8000/v1</code>, <code>https://api.openai.com/v1</code>)</div>
+            <input type="url" id="llmUrl" placeholder="http://localhost:11434/v1" required>
+        </div>
+
+        <div class="form-group">
+            <label for="llmApiKey">API Key (Optional)</label>
+            <div class="hint">Optional for local or intranet instances. Required for cloud models.</div>
+            <input type="password" id="llmApiKey" placeholder="sk-...">
+        </div>
+
+        <div class="form-group">
+            <label for="llmModel">Model Name</label>
+            <div class="hint">The target model identifier (e.g. <code>Qwen/Qwen2.5-VL-7B-Instruct</code>, <code>moondream</code>, <code>gemma4</code>)</div>
+            <input type="text" id="llmModel" placeholder="Qwen/Qwen2.5-VL-7B-Instruct" value="Qwen/Qwen2.5-VL-7B-Instruct">
+        </div>
+
+        <div class="form-group">
+            <label for="systemPrompt">System Prompt</label>
+            <div class="hint">The agent prompt instructing the VLM to handle privacy redactions (black boxes, blur, fake data).</div>
+            <textarea id="systemPrompt"></textarea>
+        </div>
+
+        <button type="submit" class="btn-primary">Save</button>
+    </form>
+
+    <h2>2. Extension Connection Credentials</h2>
+    <div class="output-box">
+        <div class="output-row">
+            <label>Extension API URL:</label>
+            <div>
+                <span id="extensionUrlDisplay" class="output-value">http://localhost:5000/api</span>
+                <button type="button" onclick="copyValue('extensionUrlDisplay')">Copy</button>
+            </div>
+            <div class="hint" style="margin-top: 4px;">Paste this into the extension popup as the Server URL.</div>
+        </div>
+    </div>
 </body>
 </html>
