@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Florence-2 On-Device Vision Test</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 20px; background: #f8fafc; color: #1e293b; }
+        .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); margin-bottom: 20px; }
+        h1 { margin-top: 0; font-size: 24px; }
+        #status { padding: 12px 16px; border-radius: 8px; font-weight: 600; margin-bottom: 16px; background: #e2e8f0; }
+        .ready { background: #dcfce7 !important; color: #166534; }
+        .loading { background: #fef9c3 !important; color: #854d0e; }
+        .controls { display: flex; gap: 12px; margin-bottom: 20px; align-items: center; }
+        button { background: #2563eb; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 500; }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
+        canvas { max-width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; margin-top: 12px; background: #fff; }
+        pre { background: #0f172a; color: #38bdf8; padding: 16px; border-radius: 8px; overflow-x: auto; max-height: 250px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🔍 Florence-2 On-Device Vision Test</h1>
+        <div id="status" class="loading">⏳ Initializing Web Worker & WebGPU...</div>
+
+        <div class="controls">
+            <input type="file" id="imageInput" accept="image/*">
+            <button id="generateBtn">Create Sample Form</button>
+            <button id="detectBtn" disabled>Run AI Detection</button>
+        </div>
+
+        <div>
+            <strong>Preview & Redaction Canvas:</strong>
+            <br>
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <strong>Detected Regions & Latency:</strong>
+            <pre id="output">// Results will appear here after detection...</pre>
+        </div>
+    </div>
+
+    <script src="test.js"></script>
+</body>
+</html>

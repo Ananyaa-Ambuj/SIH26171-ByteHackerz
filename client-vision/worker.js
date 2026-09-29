@@ -11,11 +11,14 @@ let tokenizer = null;
 
 // Regex patterns for text PII
 const PII_PATTERNS = {
-    aadhaar: /\b\d{4}\s?\d{4}\s?\d{4}\b/,
-    pan: /\b[A-Z]{5}[0-9]{4}[A-Z]\b/i,
-    phone: /\b[6-9]\d{9}\b/,
-    email: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/,
-    credit_card: /\b(?:\d{4}[-\s]?){3}\d{4}\b/,
+    // Allows optional spaces/dashes between digits
+    aadhaar: /\d{4}[\s-]?\d{4}[\s-]?\d{4}/,
+    // PAN: 5 letters, 4 digits, 1 letter (case insensitive)
+    pan: /[A-Z]{5}[0-9O]{4}[A-Z]/i,
+    // Phone: 10 digits
+    phone: /(?:[6-9]\d{9})/,
+    // Email
+    email: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
 };
 
 function matchPII(text) {
@@ -29,7 +32,7 @@ function matchPII(text) {
 }
 
 async function loadModel() {
-    const model_id = 'onnx-community/Florence-2-base-ft';
+    const model_id = 'onnx-community/Florence-2-large-ft';
 
     self.postMessage({ type: 'STATUS', message: 'Loading Florence-2 on WebGPU...' });
 
@@ -68,51 +71,84 @@ async function detectPII(imageDataUrl) {
     const image = await RawImage.fromURL(imageDataUrl);
     const regions = [];
 
-    // Task A: Object Detection (<OD>) — Detect people for Blurring
-    const odPrompt = '<OD>';
-    const odInputs = await processor(image, odPrompt);
-    const odTokens = tokenizer(odPrompt, { return_tensors: 'pt', padding: true });
-    const odOutput = await model.generate({ ...odInputs, ...odTokens, max_new_tokens: 256 });
-    const odText = tokenizer.decode(odOutput[0], { skip_special_tokens: false });
-    const odParsed = processor.post_process_generation(odText, odPrompt, image.size);
-    const odData = odParsed[odPrompt] || odParsed;
+    // Helper to normalize boxes (whether 4-point bbox or 8-point quad_box)
+    function extractBox(box) {
+        if (!box) return { x: 0, y: 0, w: 0, h: 0 };
+        if (box.length === 8) {
+            const xs = [box[0], box[2], box[4], box[6]];
+            const ys = [box[1], box[3], box[5], box[7]];
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const maxY = Math.max(...ys);
+            return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+        }
+        return { x: box[0], y: box[1], w: box[2] - box[0], h: box[3] - box[1] };
+    }
 
-    if (odData && odData.bboxes && odData.labels) {
+    // -----------------------------------------------------------------
+    // Task A: Object Detection (<OD>) — Detect faces & merge overlaps
+    // -----------------------------------------------------------------
+    const odTask = '<OD>';
+    const odPrompts = processor.construct_prompts(odTask);
+    const odInputs = await processor(image, odPrompts);
+    const odOutput = await model.generate({ ...odInputs, max_new_tokens: 256 });
+    const odText = processor.batch_decode(odOutput, { skip_special_tokens: false })[0];
+    const odParsed = processor.post_process_generation(odText, odTask, image.size);
+    const odData = odParsed[odTask] || odParsed;
+    const odBoxes = odData?.bboxes || odData?.quad_boxes;
+
+    const rawFaces = [];
+    if (odData && odBoxes && odData.labels) {
         odData.labels.forEach((label, idx) => {
             const lower = label.toLowerCase();
-            // Flag faces or people for Gaussian Blur
-            if (lower.includes('face') || lower.includes('person') || lower.includes('head')) {
-                const [x1, y1, x2, y2] = odData.bboxes[idx];
-                regions.push({
-                    type: 'face',
-                    source: 'florence_od',
-                    method: 'gaussian_blur',
-                    confidence: 0.9,
-                    bbox: {
-                        x: Math.round(x1),
-                        y: Math.round(y1),
-                        w: Math.round(x2 - x1),
-                        h: Math.round(y2 - y1),
-                    },
-                });
+            if (lower.includes('face') || lower.includes('person') || lower.includes('head') || lower.includes('woman') || lower.includes('man')) {
+                rawFaces.push(extractBox(odBoxes[idx]));
             }
         });
     }
 
-    // Task B: OCR with Region (<OCR_WITH_REGION>) — Text PII for Black-box redaction
-    const ocrPrompt = '<OCR_WITH_REGION>';
-    const ocrInputs = await processor(image, ocrPrompt);
-    const ocrTokens = tokenizer(ocrPrompt, { return_tensors: 'pt', padding: true });
-    const ocrOutput = await model.generate({ ...ocrInputs, ...ocrTokens, max_new_tokens: 512 });
-    const ocrText = tokenizer.decode(ocrOutput[0], { skip_special_tokens: false });
-    const ocrParsed = processor.post_process_generation(ocrText, ocrPrompt, image.size);
-    const ocrData = ocrParsed[ocrPrompt] || ocrParsed;
+    // Merge overlapping face boxes so we get ONE clean box
+    if (rawFaces.length > 0) {
+        // Find outer bounding box that covers all detected facial parts
+        const minX = Math.min(...rawFaces.map(f => f.x));
+        const minY = Math.min(...rawFaces.map(f => f.y));
+        const maxX = Math.max(...rawFaces.map(f => f.x + f.w));
+        const maxY = Math.max(...rawFaces.map(f => f.y + f.h));
 
-    if (ocrData && ocrData.bboxes && ocrData.labels) {
+        regions.push({
+            type: 'face',
+            source: 'florence_od',
+            method: 'gaussian_blur',
+            confidence: 0.95,
+            bbox: {
+                x: Math.round(minX),
+                y: Math.round(minY),
+                w: Math.round(maxX - minX),
+                h: Math.round(maxY - minY),
+            },
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // Task B: OCR with Region (<OCR_WITH_REGION>) — Text PII
+    // -----------------------------------------------------------------
+    const ocrTask = '<OCR_WITH_REGION>';
+    const ocrPrompts = processor.construct_prompts(ocrTask);
+    const ocrInputs = await processor(image, ocrPrompts);
+    const ocrOutput = await model.generate({ ...ocrInputs, max_new_tokens: 512 });
+    const ocrText = processor.batch_decode(ocrOutput, { skip_special_tokens: false })[0];
+    const ocrParsed = processor.post_process_generation(ocrText, ocrTask, image.size);
+    const ocrData = ocrParsed[ocrTask] || ocrParsed;
+    const ocrBoxes = ocrData?.quad_boxes || ocrData?.bboxes;
+
+    console.log('[Florence OCR Raw Output]:', ocrData);
+
+    if (ocrData && ocrBoxes && ocrData.labels) {
         ocrData.labels.forEach((text, idx) => {
             const piiTypes = matchPII(text);
             if (piiTypes) {
-                const [x1, y1, x2, y2] = ocrData.bboxes[idx];
+                const b = extractBox(ocrBoxes[idx]);
                 regions.push({
                     type: piiTypes.join(', '),
                     types: piiTypes,
@@ -121,10 +157,10 @@ async function detectPII(imageDataUrl) {
                     confidence: 0.85,
                     text_snippet: text,
                     bbox: {
-                        x: Math.round(x1),
-                        y: Math.round(y1),
-                        w: Math.round(x2 - x1),
-                        h: Math.round(y2 - y1),
+                        x: Math.round(b.x),
+                        y: Math.round(b.y),
+                        w: Math.round(b.w),
+                        h: Math.round(b.h),
                     },
                 });
             }

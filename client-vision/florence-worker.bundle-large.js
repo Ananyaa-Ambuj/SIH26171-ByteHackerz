@@ -34173,7 +34173,7 @@ var require_worker = __commonJS({
       return matches.length > 0 ? matches : null;
     }
     async function loadModel() {
-      const model_id = "onnx-community/Florence-2-base-ft";
+      const model_id = "onnx-community/Florence-2-large-ft";
       self.postMessage({ type: "STATUS", message: "Loading Florence-2 on WebGPU..." });
       try {
         model = await Florence2ForConditionalGeneration.from_pretrained(model_id, {
