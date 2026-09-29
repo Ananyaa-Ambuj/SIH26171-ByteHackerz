@@ -1,5 +1,5 @@
 body {
-    width: 300px;
+    width: 400px;
     padding: 20px;
     font-family: Arial, sans-serif;
 }
@@ -15,4 +15,7 @@ button {
 
 #result {
     margin-top: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
 }
