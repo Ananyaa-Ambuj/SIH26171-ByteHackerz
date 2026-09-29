@@ -1,29 +1,25 @@
 const result = document.getElementById("result");
-
 const canvas = document.getElementById("screenshotCanvas");
-
 const ctx = canvas.getContext("2d");
 
+// Keep track of the image globally if needed
+let originalImage = null;
 
+// Helper function to make sure the offscreen document is open before messaging it
+async function setupOffscreenDocument() {
+    if (await chrome.offscreen.hasDocument?.()) return;
+    await chrome.offscreen.createDocument({
+        url: 'offscreen.html',
+        reasons: ['DOM_PARSING'],
+        justification: 'Running Florence Worker and canvas operations.'
+    });
+}
+
+// 1. YOUR EXISTING READ BUTTON LOGIC (Kept exactly as you wrote it)
 document.getElementById("readButton").addEventListener("click", async () => {
-
-   
-   
-    
-    //variable for screenshot
-    let originalImage = null;
-    
-
-
     result.textContent = "Reading page...";
-
     try {
-
-        const tabs = await chrome.tabs.query({
-            active: true,
-            currentWindow: true
-        });
-
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const currentTab = tabs[0];
 
         if (!currentTab || !currentTab.id) {
@@ -32,120 +28,85 @@ document.getElementById("readButton").addEventListener("click", async () => {
         }
 
         await chrome.scripting.executeScript({
-            target: {
-                tabId: currentTab.id
-            },
+            target: { tabId: currentTab.id },
             files: ["content.js"]
         });
 
-        chrome.tabs.sendMessage(
-            currentTab.id,
-            {
-                action: "getPageText"
-            },
-            (response) => {
-
-                if (chrome.runtime.lastError) {
-
-                    result.textContent =
-                        "Error: " + chrome.runtime.lastError.message;
-
-                    return;
-                }
-
-                if (!response) {
-
-                    result.textContent =
-                        "No response from content script.";
-
-                    return;
-                }
-
-                result.textContent = response.text;
+        chrome.tabs.sendMessage(currentTab.id, { action: "getPageText" }, (response) => {
+            if (chrome.runtime.lastError) {
+                result.textContent = "Error: " + chrome.runtime.lastError.message;
+                return;
             }
-        );
-
+            if (!response) {
+                result.textContent = "No response from content script.";
+                return;
+            }
+            result.textContent = response.text;
+        });
     } catch (error) {
-
-        result.textContent =
-            "Error: " + error.message;
-
+        result.textContent = "Error: " + error.message;
     }
-
 });
 
+// 2. UPDATED SCREENSHOT BUTTON LOGIC
 document.getElementById("screenshotButton").addEventListener("click", async () => {
-
     try {
+        result.textContent = "Capturing screen...";
+        
+        // Ensure offscreen document is ready to accept the image
+        await setupOffscreenDocument();
 
-        // Get the current active tab
-        const tabs = await chrome.tabs.query({
-            active: true,
-            currentWindow: true
-        });
-
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const currentTab = tabs[0];
-
-        console.log("Current tab:", currentTab);
 
         // Take screenshot of the current window
         const screenshot = await chrome.tabs.captureVisibleTab(
             currentTab.windowId,
-            {
-                format: "png"
-            }
+            { format: "png" }
         );
 
         console.log("Screenshot captured!");
+        result.textContent = "Analyzing & Redacting via Florence-2...";
 
-        // Create image
-        const image = new Image();
+        // Send the screenshot directly to your offscreen.js worker pipeline
+        chrome.runtime.sendMessage({
+            action: 'RUN_FLORENCE',
+            image: screenshot
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error(chrome.runtime.lastError);
+                result.textContent = "Communication error: " + chrome.runtime.lastError.message;
+                return;
+            }
 
-        image.onload = function () {
+            if (response && response.success) {
+                // Create an image out of the redacted URL returned by offscreen.js
+                const redactedImage = new Image();
+                redactedImage.onload = function () {
+                    // Update canvas dimensions to match the image dimensions
+                    canvas.width = redactedImage.width;
+                    canvas.height = redactedImage.height;
 
-            console.log("Image loaded!");
+                    // Clear the old preview and draw the clean, redacted canvas screenshot
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(redactedImage, 0, 0);
 
-            // Set canvas size
-            canvas.width = image.width;
-            canvas.height = image.height;
+                    originalImage = redactedImage;
+                    result.textContent = `Redaction complete! (Took ${response.latencyMs || 0}ms)`;
+                };
+                
+                redactedImage.onerror = function () {
+                    result.textContent = "Error displaying redacted image preview.";
+                };
 
-            // Draw screenshot
-            ctx.drawImage(image, 0, 0);
-
-            // Save original image
-            originalImage = image;
-
-            result.textContent = "Screenshot captured successfully.";
-
-           image.onload = function () {
-              //A variable canvas for data transformation
-              const canvas = document.createElement("canvas");
-              canvas.width = image.width;
-              canvas.height = image.height;
-              const ctx = canvas.getContext("2d");
-              
-         ctx.drawImage(image, 0, 0);   
-              kkkkkkkkkkk
-      
-        };
-
-        image.onerror = function () {
-
-            console.error("Image could not be loaded.");
-
-            result.textContent = "Screenshot was captured but image could not be loaded.";
-
-        };
-
-        image.src = screenshot;
+                redactedImage.src = response.redactedUrl;
+            } else {
+                result.textContent = "Redaction failed: " + (response.error || "Unknown worker error");
+            }
+        });
 
     } catch (error) {
-
         console.error("SCREENSHOT ERROR:", error);
-
-        result.textContent =
-            "Screenshot error: " + error.message;
-
+        result.textContent = "Screenshot error: " + error.message;
     }
-
 });
