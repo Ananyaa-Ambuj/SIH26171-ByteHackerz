@@ -17,14 +17,26 @@ function handlePrivagMessage(message, sender, sendResponse) {
         const data = message.data || {};
         const { action, target, value } = data;
 
+        // Preferred target: the element behind a ref from the last scan -- exact, no coordinate guessing.
+        // A stale ref (element gone since the scan) falls back to the coordinates, if any.
+        const ref = data.ref ? String(data.ref).replace(/^@/, '') : null;
+        const refElement = ref && window.__privagRefs?.get(ref)?.isConnected ? window.__privagRefs.get(ref) : null;
+
         // The VLM answers in screenshot pixels, and captureVisibleTab captures at devicePixelRatio
         // (OS scaling x zoom), while elementFromPoint and marker placement use CSS pixels
         const dpr = window.devicePixelRatio || 1;
-        const coordinates = Array.isArray(data.coordinates) && data.coordinates.length >= 2
+        let coordinates = Array.isArray(data.coordinates) && data.coordinates.length >= 2
             ? [Number(data.coordinates[0]) / dpr, Number(data.coordinates[1]) / dpr]
             : null;
+        if (refElement) {
+            refElement.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            const r = refElement.getBoundingClientRect();
+            coordinates = [r.left + r.width / 2, r.top + r.height / 2];
+        }
+        const elementAt = (point) => refElement || (point ? document.elementFromPoint(point[0], point[1]) : null);
+        const missing = ref && !refElement ? `Element ${ref} is no longer on the page` : null;
 
-        console.log('[Privag Content] Executing action:', data);
+        console.log('[Privag Content] Executing action:', data.action, ref || data.coordinates);
 
         // Visual pointer ripple for live demonstrations
         function showVisualMarker(x, y, label) {
@@ -71,50 +83,75 @@ function handlePrivagMessage(message, sender, sendResponse) {
             }, 800);
         }
 
+        // Assign through the prototype's native setter: React tracks the value on the element
+        // itself and would otherwise ignore the input event and drop the typed text
+        function setNativeValue(el, newValue) {
+            const nativeSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set;
+            if (nativeSetter) nativeSetter.call(el, newValue);
+            else el.value = newValue;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Result messages go back to the server as the model's observation, so they never echo the
+        // typed value (after local unmasking it can be a real email)
         try {
             if (action === 'click') {
-                if (coordinates) {
+                const el = elementAt(coordinates);
+                if (el && coordinates) {
                     const [x, y] = coordinates;
-                    showVisualMarker(x, y, `Click: ${target || ''}`);
-
-                    const el = document.elementFromPoint(x, y);
-                    if (el) {
-                        el.focus?.();
-                        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
-                        el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
-                        el.click?.();
-                        sendResponse({ success: true, message: `Clicked element at (${x}, ${y})` });
-                        return true;
-                    }
+                    showVisualMarker(x, y, `Click: ${ref || target || ''}`);
+                    el.focus?.();
+                    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+                    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+                    el.click?.();
+                    sendResponse({ success: true, message: refElement ? `Clicked ${ref}` : `Clicked element at (${Math.round(x)}, ${Math.round(y)})` });
+                    return true;
                 }
-                sendResponse({ success: false, message: 'Could not find element at coordinates' });
+                sendResponse({ success: false, message: missing || 'Could not find element at coordinates' });
                 return true;
 
             } else if (action === 'type') {
-                let targetEl = null;
+                let targetEl = elementAt(coordinates);
                 if (coordinates) {
-                    targetEl = document.elementFromPoint(coordinates[0], coordinates[1]);
-                    showVisualMarker(coordinates[0], coordinates[1], `Type: ${value || ''}`);
+                    showVisualMarker(coordinates[0], coordinates[1], `Type: ${ref || target || ''}`);
                 }
 
-                if (!targetEl) {
+                if (!targetEl && !missing) {
                     targetEl = document.activeElement;
+                }
+
+                if (targetEl?.localName === 'select') {
+                    // Pick the option whose visible text or value matches, as a person would
+                    const wanted = String(value ?? '').trim().toLowerCase();
+                    const option = [...targetEl.options].find((o) => o.text.trim().toLowerCase() === wanted || o.value.toLowerCase() === wanted);
+                    if (!option) {
+                        sendResponse({ success: false, message: 'No matching option in the dropdown' });
+                        return true;
+                    }
+                    setNativeValue(targetEl, option.value);
+                    sendResponse({ success: true, message: `Selected "${option.text.trim()}"` });
+                    return true;
+                }
+
+                if (targetEl?.isContentEditable) {
+                    // Rich-text editors (chat boxes, compose windows) only react to real text insertion;
+                    // execCommand is deprecated but still the one API that inserts text like typing does
+                    targetEl.focus();
+                    document.execCommand('selectAll', false);
+                    document.execCommand('insertText', false, value || '');
+                    sendResponse({ success: true, message: 'Typed into target' });
+                    return true;
                 }
 
                 if (targetEl && ('value' in targetEl)) {
                     targetEl.focus();
-                    // Assign through the prototype's native setter: React tracks the value on the element
-                    // itself and would otherwise ignore the input event and drop the typed text
-                    const nativeSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(targetEl), 'value')?.set;
-                    if (nativeSetter) nativeSetter.call(targetEl, value || '');
-                    else targetEl.value = value || '';
-                    targetEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    targetEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    setNativeValue(targetEl, value || '');
                     sendResponse({ success: true, message: `Typed into target` });
                     return true;
                 }
 
-                sendResponse({ success: false, message: 'No editable input found' });
+                sendResponse({ success: false, message: missing || 'No editable input found' });
                 return true;
 
             } else if (action === 'scroll') {
@@ -136,9 +173,12 @@ function handlePrivagMessage(message, sender, sendResponse) {
     }
 }
 
-// Pass 1: deterministic DOM scan. Runs the PII patterns on the exact DOM text and form values, so PII
-// is found even where Florence's OCR misreads it. Boxes are returned in screenshot pixels
-// (CSS px x devicePixelRatio, the scale captureVisibleTab captures at).
+// Pass 1: deterministic DOM scan. Returns, in screenshot pixels (CSS px x devicePixelRatio, the scale
+// captureVisibleTab captures at):
+//  - regions: PII found in the exact DOM text and form values, so OCR misreads don't matter
+//  - elements: interactive elements with refs the model can target (Set-of-Marks)
+//  - mediaRegions: images, video, canvas, frames and CSS background images -- the only places left
+//    where PII can appear outside DOM text, so the only places the vision model still has to look
 // Everything lives inside this function: the file is re-injected, and top-level const/let would throw.
 function scanPagePII() {
     const start = performance.now();
@@ -160,14 +200,24 @@ function scanPagePII() {
     });
     const scrub = (text) => Object.values(patterns).reduce((t, re) => t.replace(re, '[REDACTED]'), text);
 
-    // Records the on-screen part of a viewport rect, in screenshot pixels
-    const addRegion = (rect, type, source) => {
+    // The on-screen part of a viewport rect, in screenshot pixels (null when off-screen)
+    const toShot = (rect) => {
         const x1 = Math.max(0, rect.left);
         const y1 = Math.max(0, rect.top);
         const x2 = Math.min(window.innerWidth, rect.right);
         const y2 = Math.min(window.innerHeight, rect.bottom);
-        if (x2 - x1 < 1 || y2 - y1 < 1) return false;
-        regions.push({ type, method: 'black_box', source, bbox: { x: x1 * dpr, y: y1 * dpr, w: (x2 - x1) * dpr, h: (y2 - y1) * dpr } });
+        if (x2 - x1 < 1 || y2 - y1 < 1) return null;
+        return { x: x1 * dpr, y: y1 * dpr, w: (x2 - x1) * dpr, h: (y2 - y1) * dpr };
+    };
+
+    // Emails get a consistent fake value drawn over them (semantic_mock, see pii-masker.js); their real
+    // text travels no further than the offscreen document. Everything else is blacked out.
+    const addRegion = (rect, type, source, text) => {
+        const bbox = toShot(rect);
+        if (!bbox) return false;
+        regions.push(type === 'email'
+            ? { type, method: 'semantic_mock', source, bbox, text }
+            : { type, method: 'black_box', source, bbox });
         return true;
     };
 
@@ -185,51 +235,120 @@ function scanPagePII() {
         return null;
     };
 
+    // 0. One pass over every element: find shadow roots (web components hide text and fields from plain
+    //    queries; content scripts may open closed roots too) and on-screen visual media
+    const roots = [document];
+    const mediaRegions = [];
+    for (let i = 0; i < roots.length; i++) {
+        for (const el of roots[i].querySelectorAll('*')) {
+            const shadow = chrome.dom?.openOrClosedShadowRoot?.(el) ?? el.shadowRoot;
+            if (shadow) roots.push(shadow);
+            const rect = el.getBoundingClientRect();
+            if (rect.width < 24 || rect.height < 24 || !inViewport(rect)) continue;
+            if (/^(img|video|canvas|iframe|embed|object|image)$/.test(el.localName) ||
+                getComputedStyle(el).backgroundImage.includes('url(')) {
+                const bbox = toShot(rect);
+                if (bbox) mediaRegions.push(bbox);
+            }
+        }
+    }
+
     // 1. Visible text: box each match exactly via a Range (a match wrapping across lines gives several rects)
-    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT, {
+    const textFilter = {
         acceptNode: (node) => (/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|TEXTAREA)$/.test(node.parentNode?.nodeName || '')
             ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
-    });
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const text = node.nodeValue;
-        if (text.length < 6) continue;
-        for (const [type, regex] of Object.entries(patterns)) {
-            regex.lastIndex = 0;
-            for (let m = regex.exec(text); m; m = regex.exec(text)) {
-                const range = document.createRange();
-                range.setStart(node, m.index);
-                range.setEnd(node, m.index + m[0].length);
-                for (const rect of range.getClientRects()) addRegion(rect, type, 'dom_text');
+    };
+    for (const root of roots) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, textFilter);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const text = node.nodeValue;
+            if (text.length < 6) continue;
+            for (const [type, regex] of Object.entries(patterns)) {
+                regex.lastIndex = 0;
+                for (let m = regex.exec(text); m; m = regex.exec(text)) {
+                    const range = document.createRange();
+                    range.setStart(node, m.index);
+                    range.setEnd(node, m.index + m[0].length);
+                    for (const rect of range.getClientRects()) addRegion(rect, type, 'dom_text', m[0]);
+                }
             }
         }
     }
 
     // 2. Form fields: values are not DOM text, so box the whole field
-    const formFields = [];
-    for (const el of document.querySelectorAll('input, textarea')) {
-        if (/^(hidden|submit|button|reset|image|checkbox|radio|file|range|color)$/.test(el.type)) continue;
-        const rect = el.getBoundingClientRect();
-        if (!inViewport(rect)) continue;
-        const byPurpose = sensitiveFieldType(el);
-        const types = byPurpose ? [byPurpose] : matchTypes(el.value);
-        const redacted = Boolean(el.value) && types.length > 0 && addRegion(rect, types.join(', '), 'dom_field');
-        if (formFields.length < 50) {
-            formFields.push({ name: scrub(el.name || el.id || ''), type: el.type || el.tagName.toLowerCase(), redacted });
+    const redactedFields = new Set();
+    for (const root of roots) {
+        for (const el of root.querySelectorAll('input, textarea')) {
+            if (/^(hidden|submit|button|reset|image|checkbox|radio|file|range|color)$/.test(el.type)) continue;
+            const rect = el.getBoundingClientRect();
+            if (!el.value || !inViewport(rect)) continue;
+            const byPurpose = sensitiveFieldType(el);
+            const types = byPurpose ? [byPurpose] : matchTypes(el.value);
+            if (types.length > 0 && addRegion(rect, types.join(', '), 'dom_field', el.value)) redactedFields.add(el);
         }
     }
 
-    // 3. Visible button labels give the VLM context; scrubbed because account menus often show an email
-    const visibleButtons = [];
-    for (const el of document.querySelectorAll('button, input[type="submit"], input[type="button"], [role="button"]')) {
-        if (!inViewport(el.getBoundingClientRect())) continue;
-        const label = scrub((el.innerText || el.value || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim()).slice(0, 60);
-        if (label) visibleButtons.push(label);
-        if (visibleButtons.length >= 50) break;
+    // 3. Interactive elements get refs (e1, e2, ...) that the model targets instead of guessing pixel
+    //    coordinates (chrome-use / Set-of-Marks style). The ref -> element map stays in this isolated world
+    //    for EXECUTE_ACTION. Names are scrubbed of PII and field values are never included.
+    const INTERACTIVE = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [contenteditable=""], ' +
+        '[contenteditable="true"], [onclick], [role="button"], [role="link"], [role="checkbox"], [role="radio"], ' +
+        '[role="switch"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"], [role="textbox"]';
+    const roleOf = (el) => {
+        if (el.getAttribute('role')) return el.getAttribute('role');
+        if (el.localName === 'a') return 'link';
+        if (el.localName === 'select') return 'combobox';
+        if (el.localName === 'textarea' || el.isContentEditable) return 'textbox';
+        if (el.localName === 'input') {
+            if (/^(submit|button|reset|image)$/.test(el.type)) return 'button';
+            return el.type === 'checkbox' || el.type === 'radio' ? el.type : 'textbox';
+        }
+        return 'button';
+    };
+    const nameOf = (el) => (el.getAttribute('aria-label')
+        || el.labels?.[0]?.innerText
+        || el.getAttribute('placeholder')
+        || el.getAttribute('title')
+        || el.getAttribute('alt')
+        || (/^(input|textarea|select)$/.test(el.localName) ? '' : el.innerText)
+        || el.querySelector?.('img[alt]')?.getAttribute('alt')
+        || (/^(submit|button|reset)$/.test(el.type) ? el.value : '')
+        || el.getAttribute('name')
+        || el.id
+        || '').replace(/\s+/g, ' ').trim();
+
+    const refs = new Map();
+    const elements = [];
+    for (const root of roots) {
+        for (const el of root.querySelectorAll(INTERACTIVE)) {
+            if (elements.length >= 150) break;
+            const rect = el.getBoundingClientRect();
+            const bbox = inViewport(rect) ? toShot(rect) : null;
+            if (!bbox) continue;
+            // Skip elements hidden behind overlays: what is on top at their visible center must be them
+            const topEl = root.elementFromPoint(bbox.x / dpr + bbox.w / dpr / 2, bbox.y / dpr + bbox.h / dpr / 2);
+            if (topEl && topEl !== el && !el.contains(topEl)) continue;
+
+            const ref = `e${elements.length + 1}`;
+            refs.set(ref, el);
+            const entry = {
+                ref,
+                role: roleOf(el),
+                name: scrub(nameOf(el)).slice(0, 80),
+                bbox: { x: Math.round(bbox.x), y: Math.round(bbox.y), w: Math.round(bbox.w), h: Math.round(bbox.h) },
+            };
+            if (entry.role === 'textbox' && 'value' in el) entry.filled = Boolean(el.value);
+            if (redactedFields.has(el)) entry.redacted = true;
+            if (el.disabled) entry.disabled = true;
+            elements.push(entry);
+        }
     }
+    window.__privagRefs = refs;
 
     return {
         regions,
-        dom_structure: { visible_buttons: visibleButtons, form_fields: formFields },
+        elements,
+        mediaRegions,
         scanMs: Math.round(performance.now() - start),
     };
 }

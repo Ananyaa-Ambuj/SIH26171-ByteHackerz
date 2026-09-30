@@ -3,6 +3,8 @@
 
 let serverUrl = 'http://localhost:5000';
 let actionHistory = [];
+// fake -> real for semantic_mock placeholders; stays in the extension, never sent to the server
+let maskVault = new Map();
 
 // DOM Elements
 const serverBadge = document.getElementById('serverBadge');
@@ -209,13 +211,15 @@ async function sanitizeActiveTab() {
     console.warn('Content script already present or injected:', e);
   }
 
-  // Pass 1: deterministic DOM scan, taken right before the capture so its boxes match the pixels
-  let domScan = { regions: [], dom_structure: null };
+  // Pass 1: deterministic DOM scan, taken right before the capture so its boxes match the pixels.
+  // Without it (mediaRegions undefined) the vision pass falls back to checking the whole screenshot.
+  let domScan = { regions: [], elements: [], mediaRegions: undefined };
   try {
     domScan = (await chrome.tabs.sendMessage(activeTab.id, { action: 'SCAN_PII' })) || domScan;
-    log(`DOM scan found ${domScan.regions.length} PII regions in ${domScan.scanMs ?? 0}ms`, 'info');
+    log(`DOM scan: ${domScan.regions.length} PII regions, ${domScan.elements.length} interactive elements, ` +
+      `${domScan.mediaRegions?.length ?? 0} media regions in ${domScan.scanMs ?? 0}ms`, 'info');
   } catch (e) {
-    log(`DOM scan unavailable on this page (${e.message}); relying on the vision pass only`, 'warning');
+    log(`DOM scan unavailable on this page (${e.message}); the vision pass will check the whole screenshot`, 'warning');
   }
 
   const rawScreenshot = await chrome.tabs.captureVisibleTab(
@@ -223,11 +227,17 @@ async function sanitizeActiveTab() {
     { format: 'png' }
   );
 
-  log('Running Florence-2 WebGPU on-device redaction...', 'info');
+  log('Running on-device redaction...', 'info');
 
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
-      { action: 'RUN_FLORENCE', image: rawScreenshot, domRegions: domScan.regions },
+      {
+        action: 'RUN_FLORENCE',
+        image: rawScreenshot,
+        domRegions: domScan.regions,
+        mediaRegions: domScan.mediaRegions,
+        elements: domScan.elements
+      },
       (response) => {
         if (chrome.runtime.lastError) {
           log(`Vision error: ${chrome.runtime.lastError.message}`, 'error');
@@ -251,21 +261,24 @@ async function sanitizeActiveTab() {
           canvas.style.display = 'block';
           canvasPlaceholder.style.display = 'none';
 
+          for (const { real, fake } of response.mockedMappings || []) maskVault.set(fake, real);
+
           const count = response.manifest?.redacted_regions?.length || 0;
-          visionLatencyEl.textContent = `${response.latencyMs || 0}ms`;
+          // 'skipped': no media on screen; 'cached': same pixels as an earlier step
+          const vision = response.visionMode === 'ran' ? `${response.latencyMs}ms` : response.visionMode;
+          visionLatencyEl.textContent = vision;
           redactionCountEl.textContent = count;
 
           const domCount = domScan.regions.length;
-          log(`Redaction complete: ${count} regions occluded (${domCount} DOM + ${count - domCount} vision in ${response.latencyMs}ms)`, 'success');
+          log(`Redaction complete: ${count} regions occluded (${domCount} DOM + ${count - domCount} vision; vision ${vision})`, 'success');
           resolve({
             redactedUrl: response.redactedUrl,
             manifest: {
               ...(response.manifest || { redacted_regions: [] }),
-              // The coordinate space the model's answers must use
+              // The coordinate space of coordinates, for anything that has no ref
               screenshot_dimensions: { width: img.width, height: img.height },
-              dom_structure: domScan.dom_structure
+              dom_structure: { elements: domScan.elements }
             },
-            mockedMappings: response.mockedMappings || [],
             tabId: activeTab.id
           });
         };
@@ -293,9 +306,24 @@ function showDecision(action) {
   actionVerbBadge.textContent = verb;
   actionVerbBadge.className = 'badge badge-online';
   actionThoughtEl.textContent = action.thought || '—';
-  actionTargetEl.textContent = action.target || 'None';
-  actionCoordsEl.textContent = Array.isArray(action.coordinates) ? `[${action.coordinates.join(', ')}]` : 'N/A';
+  actionTargetEl.textContent = [action.ref, action.target].filter(Boolean).join(' · ') || 'None';
+  actionCoordsEl.textContent = action.ref ? `ref ${action.ref}`
+    : Array.isArray(action.coordinates) ? `[${action.coordinates.join(', ')}]` : 'N/A';
   actionValueEl.textContent = action.value || 'None';
+}
+
+// Swaps semantic_mock placeholders the model typed (e.g. user_1@example.com) back to the real values,
+// locally and right before execution; the server and the history only ever see the placeholders
+function unmask(value) {
+  let text = String(value ?? '');
+  for (const [fake, real] of maskVault) text = text.split(fake).join(real);
+  return text;
+}
+
+// Starts a fresh placeholder numbering, in the extension and in the offscreen masker
+async function resetMasking() {
+  maskVault = new Map();
+  await chrome.runtime.sendMessage({ action: 'RESET_MASKER' }).catch(() => {});
 }
 
 // Resolves with content.js's outcome and never rejects: a failed action is an observation for the model
@@ -357,7 +385,7 @@ async function runAgentStep(goal, step) {
   }
 
   log(`Executing ${action.action} on active tab...`, 'info');
-  const result = await executeOnPage(tabId, action);
+  const result = await executeOnPage(tabId, { ...action, value: unmask(action.value) });
   log(`Page execution: ${result.message}`, result.success ? 'success' : 'warning');
   actionHistory.push(JSON.stringify({ ...action, result: result.message }));
   return { action, result, tabId };
@@ -375,6 +403,7 @@ async function runAgent() {
   stopRequested = false;
   actionHistory = [];
   setAgentUi(true);
+  await resetMasking();
   log(`Agent started: "${goal}"`, 'info');
 
   let stalled = 0;
@@ -480,6 +509,7 @@ clearButton.addEventListener('click', () => {
   serverLatencyEl.textContent = '—';
   redactionCountEl.textContent = '0';
   actionHistory = [];
+  resetMasking();
   log('Viewport and action history cleared.', 'info');
 });
 

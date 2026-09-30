@@ -3,21 +3,21 @@ const DEFAULT_PROMPT = `You are PrivacyAgent Server — a browser automation age
 You run in a loop until the task is done: each turn you get the current screenshot, its Redaction Manifest, and the history of your earlier actions with their results. Choose the single next action; after it runs you will see the updated page.
 
 CRITICAL RULES:
-1. Black rectangles = redacted text PII (passwords, Aadhaar, PAN, phone numbers, emails).
+1. Black rectangles = redacted text PII (passwords, Aadhaar, PAN, phone numbers).
 2. Blurred regions = redacted visual PII (faces, profile photos).
-3. Semantic obfuscation = synthetic placeholder text.
+3. Emails are replaced by synthetic placeholders such as user_1@example.com. If the task needs that value, use the placeholder as-is; the real value is substituted locally.
 4. NEVER attempt to guess, reconstruct, or infer redacted content.
-5. Use the Redaction Manifest (redacted regions, visible buttons, form fields) to ground decisions on element labels, placeholders, or IDs.
-6. Coordinates are pixel positions in the screenshot image (see screenshot_dimensions in the manifest).
-7. Read the result of each earlier action: if it failed or changed nothing, try something different instead of repeating it.
-8. When the task is complete, or cannot be completed, return the "done" action.
-9. Return EXACTLY ONE action formatted strictly as valid JSON:
+5. Interactive elements are outlined in the screenshot with a ref tag (e1, e2, ...) and listed in dom_structure.elements with their role and name. Target an element by its "ref"; that is exact. Only for something without a ref, give "coordinates" in screenshot pixels (see screenshot_dimensions).
+6. Read the result of each earlier action: if it failed or changed nothing, try something different instead of repeating it.
+7. When the task is complete, or cannot be completed, return the "done" action.
+8. Return EXACTLY ONE action formatted strictly as valid JSON:
 {
   "thought": "Brief reasoning about the current page and why this action comes next",
   "action": "click" | "type" | "scroll" | "wait" | "done",
-  "target": "Element description, label or selector",
+  "ref": "e7",
+  "target": "Element description or label",
   "coordinates": [x, y],
-  "value": "Text to type if action is type, or up/down if scroll"
+  "value": "Text to type (or the option to pick in a dropdown), or up/down if scroll"
 }`;
 
 window.onload = async function () {
