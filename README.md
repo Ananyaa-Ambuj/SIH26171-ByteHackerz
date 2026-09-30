@@ -42,7 +42,7 @@ Rather than lazily outsourcing privacy detection to expensive, non-deterministic
 ```
 
 - **No unnecessary compute:** 100% of standard form fields (`input[type="password"]`, email, phone, card numbers) are identified in **under 20 milliseconds** via deterministic DOM scanning.
-- **Pure graphics math for redaction:** Gaussian blurs and black-box masks are rendered directly using the browser's native Canvas 2D engine.
+- **Pure graphics math for redaction:** Synthetic look-alike values, black-box masks and Gaussian blurs are rendered directly using the browser's native Canvas 2D engine.
 - **On-device AI only where essential:** Florence-2 runs locally inside the browser via WebGPU (with an automatic WebAssembly/WASM CPU fallback on unsupported devices) to detect visual human faces and unstructured text rendered inside images or banners.
 
 ---
@@ -85,16 +85,30 @@ All benchmarks measured locally on a consumer-grade laptop (Intel Core i5 10th G
 
 ## 🛡️ Three Redaction Modalities
 
-Privag AI matches the redaction technique to the sensitivity and semantic nature of the data:
+Privag AI matches the redaction technique to where the PII was found: everything the deterministic DOM scan finds is replaced by a synthetic look-alike, and only PII that exists solely as pixels (found by Florence-2) is blacked out or blurred.
 
-1. **Solid Black-Box Masking (`black_box`):**
-   - Applied to text PII (passwords, PAN card, Aadhaar numbers, phone numbers).
-   - Generates high-contrast redactions with metadata tags (`• REDACTED (aadhaar)`).
-2. **True Gaussian Blur (`gaussian_blur`):**
-   - Applied to human faces, profile pictures, and biometric photos.
+1. **Semantic Obfuscation (`semantic_mock`) — all PII found in the page's DOM:**
+   - Applied to Aadhaar, PAN, phone, email and card numbers in page text and form fields, and to passwords.
+   - Each value is replaced by a format-preserving, clearly synthetic fake drawn in its place, so the page keeps its structure:
+
+     | Type | Fake | Why it cannot be real |
+     | :--- | :--- | :--- |
+     | Aadhaar | `0000 0000 0001` (original spacing kept) | Real Aadhaar numbers never start with 0 |
+     | PAN | `ZZZZZ0001Z` | `Z` is not a valid PAN holder-type letter |
+     | Phone | `90000 00001` | Synthetic series, 10 digits starting 6–9 |
+     | Card | `4111 1111 1111 0001` | Visa test-card range |
+     | Email | `user_0001@example.com` | `example.com` is reserved for documentation |
+     | Password | `••••••••` (fixed length) | Hides the real length too |
+
+   - Fakes are numbered with a fixed width, so no fake is a prefix of another, and the same real value keeps the same fake for the whole agent run.
+   - The same fakes replace PII in everything else sent to the server: element names in the manifest and the user's task text (secrets without a recognisable format, like passwords, can be marked `{{…}}` in the task).
+   - When the model types a fake, the extension swaps it back to the real value locally, just before execution. Real values never leave the device, and the action history only ever holds fakes.
+2. **Solid Black-Box Masking (`black_box`) — text PII inside images:**
+   - Applied to Aadhaar, PAN, phone and email text that Florence-2 OCR finds inside images, canvases, video and frames.
+   - Solid `#000000` rectangles with safety padding. They are never drawn over a DOM fake: DOM PII is hidden from OCR, and fakes are drawn last.
+3. **True Gaussian Blur (`gaussian_blur`) — faces:**
+   - Applied to human faces, profile pictures, and biometric photos found by Florence-2 object detection.
    - Rendered using native Canvas filtering (`ctx.filter = 'blur(14px)'`) with strict clipping bounds.
-3. **Semantic Obfuscation (`semantic_mock`):**
-   - Synthetic placeholder substitution in DOM contexts (e.g. replacing real email with `demo.user@privacy.org`), maintaining functional page structure while stripping true identity.
 
 ---
 

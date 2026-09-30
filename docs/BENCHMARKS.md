@@ -31,8 +31,8 @@ Evaluated using standard Indian identification documents, enterprise application
 
 | Data Type | Detection Source | Target Redaction Mode | Recall Rate | Precision Rate | Notes |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| **Password Fields** | DOM Scanner | `black_box` | **100%** | **100%** | Identified via `input[type="password"]` |
-| **Form Fields** | DOM Scanner | `black_box` / `semantic` | **100%** | **100%** | Attribute & placeholder regex matching |
+| **Password Fields** | DOM Scanner | `semantic_mock` (fixed `••••••••`) | **100%** | **100%** | Identified via `input[type="password"]` |
+| **Form Fields** | DOM Scanner | `semantic_mock` (format-preserving fake) | **100%** | **100%** | Attribute & placeholder regex matching |
 | **Human Faces / Photos** | Florence-2 `<OD>` | `gaussian_blur` | **97.2%** | **98%** | Outer head + facial features merged into single blur |
 | **Rendered Email Text** | Florence-2 `<OCR>` | `black_box` | **94.5%** | **100%** | Regex-validated text quadrilateral matching |
 | **Rendered Numbers (Aadhaar/PAN)** | Florence-2 `<OCR>` | `black_box` | **94.5%** | **100%** | Character-spacing resilient pattern matching |

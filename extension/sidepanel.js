@@ -3,8 +3,9 @@
 
 let serverUrl = 'http://localhost:5000';
 let actionHistory = [];
-// fake -> real for semantic_mock placeholders; stays in the extension, never sent to the server
-let maskVault = new Map();
+// The run's PII vault (pii-masker.js): everything sent to the server carries its fakes, and fakes the model
+// types are turned back into the real values here, right before execution. Real values never leave the device.
+let masker = new PIIMasker();
 
 // DOM Elements
 const serverBadge = document.getElementById('serverBadge');
@@ -205,7 +206,7 @@ async function sanitizeActiveTab() {
   try {
     await chrome.scripting.executeScript({
       target: { tabId: activeTab.id },
-      files: ['content.js']
+      files: ['pii-masker.js', 'content.js']
     });
   } catch (e) {
     console.warn('Content script already present or injected:', e);
@@ -227,6 +228,11 @@ async function sanitizeActiveTab() {
     { format: 'png' }
   );
 
+  // Real text from the page stops here: each DOM region carries its vault fake instead, and PII in element
+  // names gets the same fakes, so the image and the manifest agree (names are cut only after masking)
+  const domRegions = domScan.regions.map(({ text, ...region }) => ({ ...region, fake: masker.getFakeValue(text, region.type) }));
+  const elements = domScan.elements.map((el) => ({ ...el, name: masker.maskText(el.name).slice(0, 80) }));
+
   log('Running on-device redaction...', 'info');
 
   return new Promise((resolve, reject) => {
@@ -234,9 +240,9 @@ async function sanitizeActiveTab() {
       {
         action: 'RUN_FLORENCE',
         image: rawScreenshot,
-        domRegions: domScan.regions,
+        domRegions,
         mediaRegions: domScan.mediaRegions,
-        elements: domScan.elements
+        elements: elements.map(({ ref, bbox }) => ({ ref, bbox }))
       },
       (response) => {
         if (chrome.runtime.lastError) {
@@ -261,8 +267,6 @@ async function sanitizeActiveTab() {
           canvas.style.display = 'block';
           canvasPlaceholder.style.display = 'none';
 
-          for (const { real, fake } of response.mockedMappings || []) maskVault.set(fake, real);
-
           const count = response.manifest?.redacted_regions?.length || 0;
           // 'skipped': no media on screen; 'cached': same pixels as an earlier step
           const vision = response.visionMode === 'ran' ? `${response.latencyMs}ms` : response.visionMode;
@@ -277,7 +281,7 @@ async function sanitizeActiveTab() {
               ...(response.manifest || { redacted_regions: [] }),
               // The coordinate space of coordinates, for anything that has no ref
               screenshot_dimensions: { width: img.width, height: img.height },
-              dom_structure: { elements: domScan.elements }
+              dom_structure: { elements }
             },
             tabId: activeTab.id
           });
@@ -312,18 +316,9 @@ function showDecision(action) {
   actionValueEl.textContent = action.value || 'None';
 }
 
-// Swaps semantic_mock placeholders the model typed (e.g. user_1@example.com) back to the real values,
-// locally and right before execution; the server and the history only ever see the placeholders
-function unmask(value) {
-  let text = String(value ?? '');
-  for (const [fake, real] of maskVault) text = text.split(fake).join(real);
-  return text;
-}
-
-// Starts a fresh placeholder numbering, in the extension and in the offscreen masker
-async function resetMasking() {
-  maskVault = new Map();
-  await chrome.runtime.sendMessage({ action: 'RESET_MASKER' }).catch(() => {});
+// New run, new vault: fakes are numbered from 0001 again
+function resetMasking() {
+  masker = new PIIMasker();
 }
 
 // Resolves with content.js's outcome and never rejects: a failed action is an observation for the model
@@ -361,7 +356,8 @@ async function runAgentStep(goal, step) {
   const response = await fetch(`${serverUrl}/api`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: redactedUrl, task: goal, history: actionHistory, manifest }),
+    // PII in the task itself (e.g. "type my PAN ...") is faked too; the vault restores it when typed
+    body: JSON.stringify({ image: redactedUrl, task: masker.maskText(goal), history: actionHistory, manifest }),
     signal: serverRequest.signal
   });
   serverLatencyEl.textContent = `${Math.round(performance.now() - startTime)}ms`;
@@ -385,9 +381,16 @@ async function runAgentStep(goal, step) {
   }
 
   log(`Executing ${action.action} on active tab...`, 'info');
-  const result = await executeOnPage(tabId, { ...action, value: unmask(action.value) });
-  log(`Page execution: ${result.message}`, result.success ? 'success' : 'warning');
-  actionHistory.push(JSON.stringify({ ...action, result: result.message }));
+  // Fakes the model typed become the real values only here, on the way into the page
+  const result = await executeOnPage(tabId, { ...action, value: masker.unmaskText(action.value) });
+  // Results can quote the page (e.g. a picked dropdown option), and the model's own fields could echo a real
+  // value it was never shown: everything entering the history is masked
+  const entry = { ...action, result: masker.maskText(result.message) };
+  for (const key of ['thought', 'target', 'value']) {
+    if (typeof entry[key] === 'string') entry[key] = masker.maskText(entry[key]);
+  }
+  log(`Page execution: ${entry.result}`, result.success ? 'success' : 'warning');
+  actionHistory.push(JSON.stringify(entry));
   return { action, result, tabId };
 }
 
@@ -403,7 +406,7 @@ async function runAgent() {
   stopRequested = false;
   actionHistory = [];
   setAgentUi(true);
-  await resetMasking();
+  resetMasking();
   log(`Agent started: "${goal}"`, 'info');
 
   let stalled = 0;

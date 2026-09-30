@@ -16,33 +16,44 @@ Receives a sanitized screenshot, task description, action history, and redaction
 ```json
 {
   "image": "data:image/png;base64,iVBORw0KGgo...",
-  "task": "Click on the Submit button to complete registration",
+  "task": "Enter my PAN ZZZZZ0001Z and submit",
   "history": [
-    "{\"thought\": \"Fill the username first\", \"action\": \"type\", \"target\": \"username\", \"value\": \"demo_user\", \"result\": \"Typed into target\"}"
+    "{\"thought\": \"Fill the PAN field first\", \"action\": \"type\", \"ref\": \"e3\", \"target\": \"PAN\", \"value\": \"ZZZZZ0001Z\", \"result\": \"Typed into target\"}"
   ],
   "manifest": {
     "redacted_regions": [
       {
         "type": "password",
-        "method": "black_box",
+        "method": "semantic_mock",
+        "source": "dom_field",
+        "value": "••••••••",
         "bbox": { "x": 210, "y": 180, "w": 120, "h": 28 }
       },
       {
         "type": "face",
         "method": "gaussian_blur",
+        "source": "florence_od",
         "bbox": { "x": 595, "y": 133, "w": 105, "h": 148 }
       }
-    ]
+    ],
+    "screenshot_dimensions": { "width": 1580, "height": 1014 },
+    "dom_structure": {
+      "elements": [
+        { "ref": "e3", "role": "textbox", "name": "PAN", "filled": true, "redacted": true, "bbox": { "x": 210, "y": 240, "w": 120, "h": 28 } }
+      ]
+    }
   }
 }
 ```
 
+Every personal value in the request is a synthetic look-alike: the image, element names, the task (the user typed their real PAN; the extension sent `ZZZZZ0001Z`) and the history. The extension restores real values locally when the model types a look-alike.
+
 | Field | Type | Required | Description |
 | :--- | :---: | :---: | :--- |
 | `image` | `string` | **Yes** | Base64-encoded PNG/JPEG data URI of the sanitized screenshot. |
-| `task` | `string` | **Yes** | Natural language user objective (e.g. *"Log into the portal"*). |
-| `history` | `string[]` | No | Earlier steps of the current agent run, each a serialized action JSON plus the `result` the page reported (the ReAct observation). |
-| `manifest` | `object` | No | Redaction metadata: occluded PII types and coordinates (`redacted_regions`), `screenshot_dimensions`, and `dom_structure` (visible buttons, form fields; never field values). |
+| `task` | `string` | **Yes** | Natural language user objective (e.g. *"Log into the portal"*), with any PII replaced by look-alikes. |
+| `history` | `string[]` | No | Earlier steps of the current agent run, each a serialized action JSON plus the `result` the page reported (the ReAct observation). Holds look-alikes only. |
+| `manifest` | `object` | No | Redaction metadata: PII regions with method, source, bbox and, for DOM look-alikes, the `value` shown (`redacted_regions`); `screenshot_dimensions`; and `dom_structure.elements` (interactive elements with refs; never field values). |
 
 ---
 
@@ -65,8 +76,9 @@ Receives a sanitized screenshot, task description, action history, and redaction
 | :--- | :---: | :--- |
 | `action.thought` | `string` | The model's brief reasoning for this step (ReAct), shown in the side panel. |
 | `action.action` | `string` | Action grammar verb: `"click"`, `"type"`, `"scroll"`, `"wait"`, `"done"`. The extension's agent loop runs until `"done"`. |
+| `action.ref` | `string` | Ref of the target element (`e7`) from `dom_structure.elements` / the Set-of-Marks tags: the exact way to target an element. |
 | `action.target` | `string` | Human-readable label or description of the target DOM element. |
-| `action.coordinates` | `[number, number]` | `[x, y]` viewport pixel coordinates for the synthetic interaction. |
+| `action.coordinates` | `[number, number]` | Fallback for targets without a ref: `[x, y]` in screenshot pixels (see `screenshot_dimensions`). |
 | `action.value` | `string` | Input string if action is `"type"`, or `"up"`/`"down"` if action is `"scroll"`. |
 | `raw_response` | `string` | Verbatim text returned by the VLM prior to regex JSON parsing. |
 | `error` | `string` | Present only when the server got no answer from the VLM (unreachable, HTTP error). `action` is then a placeholder `"wait"` and the extension's agent loop stops. |

@@ -8,9 +8,6 @@ worker.postMessage({ type: 'LOAD_MODEL' });
 let modelState = null;
 let nextRequestId = 1;
 
-// Real <-> fake values for semantic_mock, kept for the whole agent run so a value keeps the same fake
-let masker = new PIIMasker();
-
 // Vision results keyed by a hash of the exact pixels the model looked at: images that did not change
 // since an earlier step are not analysed again (screenpipe-style frame deduplication)
 const visionCache = new Map();
@@ -63,7 +60,7 @@ async function sha256Hex(bytes) {
 // Pass 2, only where DOM scanning cannot read: the media regions, cut out of the screenshot onto a white
 // canvas. No media on screen means nothing is left for vision to find. Without a DOM scan
 // (mediaRegions undefined, e.g. the page blocks content scripts) the whole screenshot is analysed.
-async function runVision(img, mediaRegions) {
+async function runVision(img, mediaRegions, domRegions) {
     if (Array.isArray(mediaRegions) && mediaRegions.length === 0) {
         return { regions: [], latencyMs: 0, mode: 'skipped' };
     }
@@ -85,8 +82,11 @@ async function runVision(img, mediaRegions) {
     c.fillStyle = '#FFFFFF';
     c.fillRect(0, 0, crop.width, crop.height);
     for (const r of areas) c.drawImage(img, r.x, r.y, r.w, r.h, r.x - x1, r.y - y1, r.w, r.h);
+    // DOM PII shown over an image (text on a background image) already gets its fake from Pass 1; hide it
+    // from OCR so no vision black box is ever placed on top of a fake value
+    for (const r of domRegions || []) c.fillRect(r.bbox.x - x1 - 4, r.bbox.y - y1 - 3, r.bbox.w + 8, r.bbox.h + 6);
 
-    const key = `${x1},${y1}:${await sha256Hex(c.getImageData(0, 0, crop.width, crop.height).data)}`;
+    const key =`${x1},${y1}:${await sha256Hex(c.getImageData(0, 0, crop.width, crop.height).data)}`;
     if (visionCache.has(key)) {
         return { regions: visionCache.get(key), latencyMs: 0, mode: 'cached' };
     }
@@ -98,9 +98,53 @@ async function runVision(img, mediaRegions) {
     return { regions, latencyMs: result.latencyMs, mode: 'ran' };
 }
 
-// Pass 3: blur faces, black out text PII, draw consistent fake values over emails (semantic_mock)
+// A DOM detection's fake value, drawn where the real one was on the page's own background colour so the page
+// keeps its structure. Fields keep their border; text gets the black box's padding so no anti-aliased edge
+// of the real value survives. Passwords show a fixed row of dots, which also hides the real length.
+function drawFake(ctx, box, x, y, w, h, label) {
+    const field = box.source === 'dom_field';
+    const [px, py, pw, ph] = field ? [x + 2, y + 2, w - 4, h - 4] : [Math.max(0, x - 4), Math.max(0, y - 3), w + 8, h + 6];
+
+    // Background: per-channel median of the value's own inner corners, which glyphs rarely touch. (The padded
+    // box's corners can land on a surrounding border, e.g. the edge of a button.)
+    const clampX = (v) => Math.min(ctx.canvas.width - 1, Math.max(0, Math.round(v)));
+    const clampY = (v) => Math.min(ctx.canvas.height - 1, Math.max(0, Math.round(v)));
+    const inset = field ? 3 : 1;
+    const corners = [[x + inset, y + inset], [x + w - 1 - inset, y + inset], [x + inset, y + h - 1 - inset], [x + w - 1 - inset, y + h - 1 - inset]]
+        .map(([cx, cy]) => ctx.getImageData(clampX(cx), clampY(cy), 1, 1).data);
+    const [r, g, b] = [0, 1, 2].map((i) => {
+        const v = corners.map((c) => c[i]).sort((m, n) => m - n);
+        return Math.round((v[1] + v[2]) / 2);
+    });
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    ctx.fillRect(px, py, pw, ph);
+
+    const shown = label === 'password' ? '••••••••' : (box.fake || '');
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(px, py, pw, ph);
+    ctx.clip();
+    ctx.fillStyle = 0.299 * r + 0.587 * g + 0.114 * b > 140 ? '#000000' : '#FFFFFF';
+    // A text line box is ~1.15x its font size; a field box also holds padding
+    let fontSize = Math.max(10, Math.round(h * (field ? 0.5 : 0.85)));
+    ctx.font = `${fontSize}px sans-serif`;
+    // Shrink to the original width so the fake value does not spill over neighbouring content
+    const maxWidth = pw - (field ? 12 : 4);
+    const textWidth = ctx.measureText(shown).width;
+    if (textWidth > maxWidth) {
+        fontSize = Math.max(8, Math.floor(fontSize * maxWidth / textWidth));
+        ctx.font = `${fontSize}px sans-serif`;
+    }
+    ctx.textBaseline = 'middle';
+    ctx.fillText(shown, field ? x + 8 : x, y + h / 2);
+    ctx.restore();
+    return shown;
+}
+
+// Pass 3. Image-based (Florence) detections: faces blurred, text in images blacked out. DOM detections: the
+// side panel's format-preserving fake drawn over the real value (semantic_mock). An explicit method always
+// wins over the label heuristics, which only classify regions that arrive without one.
 function redact(ctx, img, boxes) {
-    const mockedMappings = [];
     const manifest = { redacted_regions: [] };
 
     boxes.forEach((box) => {
@@ -116,16 +160,14 @@ function redact(ctx, img, boxes) {
         if (w <= 0 || h <= 0) return;
 
         const label = (box.type || box.label || box.category || '').toLowerCase();
-        const realText = box.text_snippet || box.text || 'Sensitive Data';
 
         // Check categories
-        const isImage = label.includes('image') || label.includes('face') || label.includes('photo') || label.includes('picture') || box.method === 'gaussian_blur';
-        const isBlackBox = label.includes('password') || label.includes('secret') || label.includes('card') || label.includes('cvv') || label.includes('aadhaar') || label.includes('pan') || box.method === 'black_box';
+        const isImage = label.includes('image') || label.includes('face') || label.includes('photo') || label.includes('picture');
+        const isBlackBox = label.includes('password') || label.includes('secret') || label.includes('card') || label.includes('cvv') || label.includes('aadhaar') || label.includes('pan');
+        const methodUsed = box.method || (isImage ? 'gaussian_blur' : isBlackBox ? 'black_box' : 'semantic_mock');
+        let shown;
 
-        let methodUsed = 'semantic_mock';
-
-        if (isImage) {
-            methodUsed = 'gaussian_blur';
+        if (methodUsed === 'gaussian_blur') {
             // --- 1. GAUSSIAN BLUR FOR IMAGES & FACES ---
             ctx.save();
             ctx.beginPath();
@@ -135,50 +177,23 @@ function redact(ctx, img, boxes) {
             ctx.drawImage(img, 0, 0);
             ctx.restore();
 
-        } else if (isBlackBox) {
-            methodUsed = 'black_box';
-            // --- 2. SOLID BLACKOUT FOR PASSWORDS, AADHAAR, PAN & CARDS ---
+        } else if (methodUsed === 'black_box') {
+            // --- 2. SOLID BLACKOUT FOR TEXT PII INSIDE IMAGES ---
             // 4px padding to prevent anti-aliasing text bleed
             ctx.fillStyle = '#000000';
             ctx.fillRect(Math.max(0, x - 4), Math.max(0, y - 3), w + 8, h + 6);
 
         } else {
-            methodUsed = 'semantic_mock';
-            // --- 3. MOCK SENSITIVE PII (Email) with a fake value that stays the same all run ---
-            // Same padding as the black box, so no anti-aliased edge of the real text survives
-            const px = Math.max(0, x - 4);
-            const py = Math.max(0, y - 3);
-            const pw = w + 8;
-            const ph = h + 6;
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(px, py, pw, ph);
-
-            const fakeText = masker.getFakeValue(realText, label);
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(px, py, pw, ph);
-            ctx.clip();
-            ctx.fillStyle = '#000000';
-            let fontSize = Math.max(10, Math.round(h * 0.7));
-            ctx.font = `${fontSize}px sans-serif`;
-            // Shrink to the original width so the fake value does not spill over neighbouring content
-            const textWidth = ctx.measureText(fakeText).width;
-            if (textWidth > pw - 4) {
-                fontSize = Math.max(8, Math.floor(fontSize * (pw - 4) / textWidth));
-                ctx.font = `${fontSize}px sans-serif`;
-            }
-            ctx.textBaseline = 'middle';
-            ctx.fillText(fakeText, x + 2, y + h / 2);
-            ctx.restore();
-
-            mockedMappings.push({ real: realText, fake: fakeText });
+            // --- 3. FORMAT-PRESERVING FAKE FOR PII FOUND IN THE DOM ---
+            shown = drawFake(ctx, box, x, y, w, h, label);
         }
 
         manifest.redacted_regions.push({
             type: label || 'pii',
             method: methodUsed,
             source: box.source || 'unknown',
+            // The fake shown in the image, so the model can reuse it exactly (the vault restores the real value)
+            ...(shown !== undefined && { value: shown }),
             bbox: {
                 x: Math.round(x),
                 y: Math.round(y),
@@ -188,7 +203,7 @@ function redact(ctx, img, boxes) {
         });
     });
 
-    return { manifest, mockedMappings };
+    return { manifest };
 }
 
 // Set-of-Marks: outline every interactive element and tag it with its ref, so the model can answer
@@ -221,18 +236,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
     }
 
-    if (message.action === 'RESET_MASKER') {
-        // New agent run: start numbering fake values again
-        masker = new PIIMasker();
-        sendResponse(true);
-        return;
-    }
-
     if (message.action === 'RUN_FLORENCE') {
         const img = new Image();
         img.onload = async () => {
             try {
-                const vision = await runVision(img, message.mediaRegions);
+                const vision = await runVision(img, message.mediaRegions, message.domRegions);
 
                 const canvas = document.createElement('canvas');
                 canvas.width = img.width;
@@ -240,15 +248,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0);
 
-                // DOM-scan regions (Pass 1, already in screenshot pixels) + vision regions (Pass 2)
-                const { manifest, mockedMappings } = redact(ctx, img, [...(message.domRegions || []), ...vision.regions]);
+                // Vision regions (Pass 2) first, DOM-scan fakes (Pass 1, already in screenshot pixels) last, so
+                // no black box or blur can ever cover a fake value
+                const { manifest } = redact(ctx, img, [...vision.regions, ...(message.domRegions || [])]);
                 drawMarks(ctx, message.elements || [], img.width);
 
                 sendResponse({
                     success: true,
                     redactedUrl: canvas.toDataURL('image/jpeg', 0.95),
                     manifest,
-                    mockedMappings,
                     latencyMs: vision.latencyMs,
                     visionMode: vision.mode
                 });

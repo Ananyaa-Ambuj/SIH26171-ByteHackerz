@@ -56,6 +56,7 @@
     <section class="section card">
       <label for="taskInput" class="input-label">Agent Task / Goal</label>
       <textarea id="taskInput" class="textarea-input" rows="2" placeholder="e.g. Click the login button and proceed..."></textarea>
+      <p class="help-text">Aadhaar, PAN, phone, email and card numbers in the task are faked before sending. Wrap other secrets, like a password, as {{secret}}.</p>
 
       <!-- Action Buttons -->
       <div class="btn-grid">
@@ -125,6 +126,7 @@
     </section>
   </div>
 
+  <script src="pii-masker.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

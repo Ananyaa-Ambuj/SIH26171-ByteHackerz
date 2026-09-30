@@ -182,23 +182,16 @@ function handlePrivagMessage(message, sender, sendResponse) {
 // Everything lives inside this function: the file is re-injected, and top-level const/let would throw.
 function scanPagePII() {
     const start = performance.now();
-    // Exact-text patterns; the vision worker's OCR patterns are looser to tolerate misreads
-    const patterns = {
-        aadhaar: /\d{4}[\s-]?\d{4}[\s-]?\d{4}/g,
-        pan: /[A-Z]{5}\d{4}[A-Z]/g,
-        phone: /[6-9]\d{4}[\s-]?\d{5}/g,
-        email: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
-    };
+    // Exact-text patterns shared with the side panel's vault (pii-masker.js, injected before this file), in
+    // priority order; the vision worker's OCR patterns are looser to tolerate misreads
+    const patterns = PIIMasker.PATTERNS;
     const dpr = window.devicePixelRatio || 1;
     const regions = [];
 
     const inViewport = (r) => r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 &&
         r.top < window.innerHeight && r.left < window.innerWidth;
-    const matchTypes = (text) => Object.keys(patterns).filter((type) => {
-        patterns[type].lastIndex = 0;
-        return patterns[type].test(text);
-    });
-    const scrub = (text) => Object.values(patterns).reduce((t, re) => t.replace(re, '[REDACTED]'), text);
+    // The highest-priority PII type a value matches, e.g. "aadhaar" rather than "aadhaar, phone"
+    const primaryType = (text) => Object.keys(patterns).find((type) => text.search(patterns[type]) >= 0);
 
     // The on-screen part of a viewport rect, in screenshot pixels (null when off-screen)
     const toShot = (rect) => {
@@ -210,14 +203,12 @@ function scanPagePII() {
         return { x: x1 * dpr, y: y1 * dpr, w: (x2 - x1) * dpr, h: (y2 - y1) * dpr };
     };
 
-    // Emails get a consistent fake value drawn over them (semantic_mock, see pii-masker.js); their real
-    // text travels no further than the offscreen document. Everything else is blacked out.
+    // Everything found in the DOM is replaced by a format-preserving fake (semantic_mock). The real text goes
+    // only as far as the side panel, which swaps it for the vault's fake before anything leaves it.
     const addRegion = (rect, type, source, text) => {
         const bbox = toShot(rect);
         if (!bbox) return false;
-        regions.push(type === 'email'
-            ? { type, method: 'semantic_mock', source, bbox, text }
-            : { type, method: 'black_box', source, bbox });
+        regions.push({ type, method: 'semantic_mock', source, bbox, text });
         return true;
     };
 
@@ -227,7 +218,9 @@ function scanPagePII() {
         const hint = `${el.name} ${el.id} ${el.placeholder || ''} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
         const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
         if (el.type === 'password') return 'password';
-        if (autocomplete.startsWith('cc-')) return 'card';
+        if (autocomplete === 'cc-number') return 'card';
+        // Other card fields (security code, expiry, holder) have no card-number shape: hide them like a password
+        if (autocomplete.startsWith('cc-')) return 'password';
         if (/aadha?ar|adhaa?r/.test(hint)) return 'aadhaar';
         if (/\bpan\b|pan[\s_-]?(no|num|card)/.test(hint)) return 'pan';
         if (el.type === 'email' || autocomplete === 'email' || /e-?mail/.test(hint)) return 'email';
@@ -263,12 +256,17 @@ function scanPagePII() {
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
             const text = node.nodeValue;
             if (text.length < 6) continue;
+            // Types in priority order; a span already claimed (a card number) is not matched again (as an Aadhaar)
+            const taken = [];
             for (const [type, regex] of Object.entries(patterns)) {
-                regex.lastIndex = 0;
-                for (let m = regex.exec(text); m; m = regex.exec(text)) {
+                for (const m of text.matchAll(regex)) {
+                    const from = m.index;
+                    const to = m.index + m[0].length;
+                    if (taken.some(([s, e]) => from < e && s < to)) continue;
+                    taken.push([from, to]);
                     const range = document.createRange();
-                    range.setStart(node, m.index);
-                    range.setEnd(node, m.index + m[0].length);
+                    range.setStart(node, from);
+                    range.setEnd(node, to);
                     for (const rect of range.getClientRects()) addRegion(rect, type, 'dom_text', m[0]);
                 }
             }
@@ -282,15 +280,17 @@ function scanPagePII() {
             if (/^(hidden|submit|button|reset|image|checkbox|radio|file|range|color)$/.test(el.type)) continue;
             const rect = el.getBoundingClientRect();
             if (!el.value || !inViewport(rect)) continue;
-            const byPurpose = sensitiveFieldType(el);
-            const types = byPurpose ? [byPurpose] : matchTypes(el.value);
-            if (types.length > 0 && addRegion(rect, types.join(', '), 'dom_field', el.value)) redactedFields.add(el);
+            // The value's own format decides (so the same value gets the same fake in any field); the field's
+            // purpose covers values without one. Passwords always stay passwords, whatever they look like.
+            const type = el.type === 'password' ? 'password' : (primaryType(el.value) || sensitiveFieldType(el));
+            if (type && addRegion(rect, type, 'dom_field', el.value)) redactedFields.add(el);
         }
     }
 
     // 3. Interactive elements get refs (e1, e2, ...) that the model targets instead of guessing pixel
     //    coordinates (chrome-use / Set-of-Marks style). The ref -> element map stays in this isolated world
-    //    for EXECUTE_ACTION. Names are scrubbed of PII and field values are never included.
+    //    for EXECUTE_ACTION. Names are returned as shown: the side panel replaces any PII in them with the
+    //    vault's fakes (uncut, so no half-value escapes masking). Field values are never included.
     const INTERACTIVE = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [contenteditable=""], ' +
         '[contenteditable="true"], [onclick], [role="button"], [role="link"], [role="checkbox"], [role="radio"], ' +
         '[role="switch"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"], [role="textbox"]';
@@ -334,7 +334,7 @@ function scanPagePII() {
             const entry = {
                 ref,
                 role: roleOf(el),
-                name: scrub(nameOf(el)).slice(0, 80),
+                name: nameOf(el),
                 bbox: { x: Math.round(bbox.x), y: Math.round(bbox.y), w: Math.round(bbox.w), h: Math.round(bbox.h) },
             };
             if (entry.role === 'textbox' && 'value' in el) entry.filled = Boolean(el.value);
