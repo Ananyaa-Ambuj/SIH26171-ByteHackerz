@@ -18,9 +18,12 @@ function handlePrivagMessage(message, sender, sendResponse) {
         const { action, target, value } = data;
 
         // Preferred target: the element behind a ref from the last scan -- exact, no coordinate guessing.
-        // A stale ref (element gone since the scan) falls back to the coordinates, if any.
-        const ref = data.ref ? String(data.ref).replace(/^@/, '') : null;
-        const refElement = ref && window.__privagRefs?.get(ref)?.isConnected ? window.__privagRefs.get(ref) : null;
+        // Small models write refs loosely ("e7", "[e7]", "E7", a bare 7, or only in "target"): take the number.
+        // A ref that cannot be resolved falls back to the coordinates, if any.
+        const refText = data.ref ?? (/^\W*e\d+\W*$/i.test(String(target ?? '')) ? target : null);
+        const refNumber = refText == null ? null : String(refText).match(/\d+/)?.[0];
+        const ref = refNumber ? `e${Number(refNumber)}` : null;
+        const refElement = ref ? privagResolveRef(ref) : null;
 
         // The VLM answers in screenshot pixels, and captureVisibleTab captures at devicePixelRatio
         // (OS scaling x zoom), while elementFromPoint and marker placement use CSS pixels
@@ -34,7 +37,9 @@ function handlePrivagMessage(message, sender, sendResponse) {
             coordinates = [r.left + r.width / 2, r.top + r.height / 2];
         }
         const elementAt = (point) => refElement || (point ? document.elementFromPoint(point[0], point[1]) : null);
-        const missing = ref && !refElement ? `Element ${ref} is no longer on the page` : null;
+        const missing = !ref || refElement ? null
+            : !window.__privagRefs?.has(ref) ? `No element ${ref} in the last page scan`
+            : `Element ${ref} is no longer on the page`;
 
         console.log('[Privag Content] Executing action:', data.action, ref || data.coordinates);
 
@@ -102,8 +107,13 @@ function handlePrivagMessage(message, sender, sendResponse) {
                     const [x, y] = coordinates;
                     showVisualMarker(x, y, `Click: ${ref || target || ''}`);
                     el.focus?.();
-                    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
-                    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+                    // The full sequence a real click produces: many menu/dropdown libraries react to pointerdown
+                    // and never see a bare click()
+                    const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, pointerType: 'mouse', isPrimary: true };
+                    el.dispatchEvent(new PointerEvent('pointerdown', { ...init, buttons: 1 }));
+                    el.dispatchEvent(new MouseEvent('mousedown', { ...init, buttons: 1 }));
+                    el.dispatchEvent(new PointerEvent('pointerup', init));
+                    el.dispatchEvent(new MouseEvent('mouseup', init));
                     el.click?.();
                     sendResponse({ success: true, message: refElement ? `Clicked ${ref}` : `Clicked element at (${Math.round(x)}, ${Math.round(y)})` });
                     return true;
@@ -119,6 +129,11 @@ function handlePrivagMessage(message, sender, sendResponse) {
 
                 if (!targetEl && !missing) {
                     targetEl = document.activeElement;
+                }
+
+                // A ref can point at a wrapper (e.g. a combobox div around its input): type into the field inside
+                if (targetEl && !('value' in targetEl) && !targetEl.isContentEditable) {
+                    targetEl = targetEl.querySelector('input:not([type="hidden"]), textarea, select, [contenteditable=""], [contenteditable="true"]') || targetEl;
                 }
 
                 if (targetEl?.localName === 'select') {
@@ -234,7 +249,9 @@ function scanPagePII() {
     const mediaRegions = [];
     for (let i = 0; i < roots.length; i++) {
         for (const el of roots[i].querySelectorAll('*')) {
-            const shadow = chrome.dom?.openOrClosedShadowRoot?.(el) ?? el.shadowRoot;
+            // openOrClosedShadowRoot only accepts HTML elements and throws for SVG/MathML ones (which can't host
+            // shadow roots anyway); one inline SVG icon used to abort the whole scan
+            const shadow = el instanceof HTMLElement ? (chrome.dom?.openOrClosedShadowRoot?.(el) ?? el.shadowRoot) : null;
             if (shadow) roots.push(shadow);
             const rect = el.getBoundingClientRect();
             if (rect.width < 24 || rect.height < 24 || !inViewport(rect)) continue;
@@ -291,36 +308,10 @@ function scanPagePII() {
     //    coordinates (chrome-use / Set-of-Marks style). The ref -> element map stays in this isolated world
     //    for EXECUTE_ACTION. Names are returned as shown: the side panel replaces any PII in them with the
     //    vault's fakes (uncut, so no half-value escapes masking). Field values are never included.
-    const INTERACTIVE = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [contenteditable=""], ' +
-        '[contenteditable="true"], [onclick], [role="button"], [role="link"], [role="checkbox"], [role="radio"], ' +
-        '[role="switch"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"], [role="textbox"]';
-    const roleOf = (el) => {
-        if (el.getAttribute('role')) return el.getAttribute('role');
-        if (el.localName === 'a') return 'link';
-        if (el.localName === 'select') return 'combobox';
-        if (el.localName === 'textarea' || el.isContentEditable) return 'textbox';
-        if (el.localName === 'input') {
-            if (/^(submit|button|reset|image)$/.test(el.type)) return 'button';
-            return el.type === 'checkbox' || el.type === 'radio' ? el.type : 'textbox';
-        }
-        return 'button';
-    };
-    const nameOf = (el) => (el.getAttribute('aria-label')
-        || el.labels?.[0]?.innerText
-        || el.getAttribute('placeholder')
-        || el.getAttribute('title')
-        || el.getAttribute('alt')
-        || (/^(input|textarea|select)$/.test(el.localName) ? '' : el.innerText)
-        || el.querySelector?.('img[alt]')?.getAttribute('alt')
-        || (/^(submit|button|reset)$/.test(el.type) ? el.value : '')
-        || el.getAttribute('name')
-        || el.id
-        || '').replace(/\s+/g, ' ').trim();
-
     const refs = new Map();
     const elements = [];
     for (const root of roots) {
-        for (const el of root.querySelectorAll(INTERACTIVE)) {
+        for (const el of root.querySelectorAll(privagInteractiveSelector())) {
             if (elements.length >= 150) break;
             const rect = el.getBoundingClientRect();
             const bbox = inViewport(rect) ? toShot(rect) : null;
@@ -330,11 +321,14 @@ function scanPagePII() {
             if (topEl && topEl !== el && !el.contains(topEl)) continue;
 
             const ref = `e${elements.length + 1}`;
-            refs.set(ref, el);
+            const role = privagRoleOf(el);
+            const name = privagNameOf(el);
+            // Role and name let EXECUTE_ACTION find the control again if the page re-renders it meanwhile
+            refs.set(ref, { el, role, name });
             const entry = {
                 ref,
-                role: roleOf(el),
-                name: nameOf(el),
+                role,
+                name,
                 bbox: { x: Math.round(bbox.x), y: Math.round(bbox.y), w: Math.round(bbox.w), h: Math.round(bbox.h) },
             };
             if (entry.role === 'textbox' && 'value' in el) entry.filled = Boolean(el.value);
@@ -351,4 +345,50 @@ function scanPagePII() {
         mediaRegions,
         scanMs: Math.round(performance.now() - start),
     };
+}
+
+// Elements a user can act on, as the scan lists them (top-level functions: safe to redeclare on re-injection)
+function privagInteractiveSelector() {
+    return 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [contenteditable=""], ' +
+        '[contenteditable="true"], [onclick], [role="button"], [role="link"], [role="checkbox"], [role="radio"], ' +
+        '[role="switch"], [role="tab"], [role="menuitem"], [role="option"], [role="combobox"], [role="textbox"]';
+}
+
+function privagRoleOf(el) {
+    if (el.getAttribute('role')) return el.getAttribute('role');
+    if (el.localName === 'a') return 'link';
+    if (el.localName === 'select') return 'combobox';
+    if (el.localName === 'textarea' || el.isContentEditable) return 'textbox';
+    if (el.localName === 'input') {
+        if (/^(submit|button|reset|image)$/.test(el.type)) return 'button';
+        return el.type === 'checkbox' || el.type === 'radio' ? el.type : 'textbox';
+    }
+    return 'button';
+}
+
+function privagNameOf(el) {
+    return (el.getAttribute('aria-label')
+        || el.labels?.[0]?.innerText
+        || el.getAttribute('placeholder')
+        || el.getAttribute('title')
+        || el.getAttribute('alt')
+        || (/^(input|textarea|select)$/.test(el.localName) ? '' : el.innerText)
+        || el.querySelector?.('img[alt]')?.getAttribute('alt')
+        || (/^(submit|button|reset)$/.test(el.type) ? el.value : '')
+        || el.getAttribute('name')
+        || el.id
+        // A link with no text (logo, icon) is still told apart by where it goes
+        || (el.localName === 'a' ? el.getAttribute('href') : '')
+        || '').replace(/\s+/g, ' ').trim();
+}
+
+// The element behind a ref from the last scan. If the page re-rendered it since (common in React/Vue apps while
+// the model was thinking), the same control is found again by role and name, when that is unambiguous.
+function privagResolveRef(ref) {
+    const entry = window.__privagRefs?.get(ref);
+    if (!entry) return null;
+    if (entry.el.isConnected) return entry.el;
+    const matches = [...document.querySelectorAll(privagInteractiveSelector())].filter((el) =>
+        el.getClientRects().length > 0 && privagRoleOf(el) === entry.role && privagNameOf(el) === entry.name);
+    return matches.length === 1 ? matches[0] : null;
 }
