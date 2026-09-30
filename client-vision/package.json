@@ -4,8 +4,7 @@
 	"description": "",
 	"main": "index.js",
 	"scripts": {
-		"build": "esbuild worker.js --bundle --format=esm --platform=browser --target=chrome120 --outfile=../extension/florence-worker.bundle.js && node copy-ort-runtime.mjs ../extension",
-		"build:local": "esbuild worker.js --bundle --format=esm --platform=browser --target=chrome120 --outfile=florence-worker.bundle.js && node copy-ort-runtime.mjs ."
+		"build": "esbuild worker.js --bundle --format=esm --platform=browser --target=chrome120 --outfile=../extension/florence-worker.bundle.js && node copy-ort-runtime.mjs ../extension"
 	},
 	"keywords": [],
 	"author": "",

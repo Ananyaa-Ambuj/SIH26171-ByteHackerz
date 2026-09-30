@@ -27,6 +27,7 @@ const serverLatencyEl = document.getElementById('serverLatency');
 const redactionCountEl = document.getElementById('redactionCount');
 
 const actionVerbBadge = document.getElementById('actionVerbBadge');
+const actionThoughtEl = document.getElementById('actionThought');
 const actionTargetEl = document.getElementById('actionTarget');
 const actionCoordsEl = document.getElementById('actionCoords');
 const actionValueEl = document.getElementById('actionValue');
@@ -258,7 +259,12 @@ async function sanitizeActiveTab() {
           log(`Redaction complete: ${count} regions occluded (${domCount} DOM + ${count - domCount} vision in ${response.latencyMs}ms)`, 'success');
           resolve({
             redactedUrl: response.redactedUrl,
-            manifest: { ...(response.manifest || { redacted_regions: [] }), dom_structure: domScan.dom_structure },
+            manifest: {
+              ...(response.manifest || { redacted_regions: [] }),
+              // The coordinate space the model's answers must use
+              screenshot_dimensions: { width: img.width, height: img.height },
+              dom_structure: domScan.dom_structure
+            },
             mockedMappings: response.mockedMappings || [],
             tabId: activeTab.id
           });
@@ -270,78 +276,159 @@ async function sanitizeActiveTab() {
   });
 }
 
-// 5. Run Full Autonomous Agent Step (Sanitize -> Server VLM -> Execute Action)
-async function runAIStep() {
-  const userGoal = taskInput.value.trim() || 'Analyze page context and select the next interactive element.';
-  stepButton.disabled = true;
-  sanitizeButton.disabled = true;
-  actionVerbBadge.textContent = 'THINKING';
-  actionVerbBadge.className = 'badge badge-warning';
+// 5. Autonomous ReAct agent: observe (sanitize) -> reason + act (server VLM) -> execute -> repeat until done
+const MAX_AGENT_STEPS = 15;
+const MAX_STALLED_STEPS = 3;
+let agentRunning = false;
+let stopRequested = false;
+let serverRequest = null; // AbortController of the in-flight server call, so Stop can cancel it
 
-  try {
-    const { redactedUrl, manifest, tabId } = await sanitizeActiveTab();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    log(`Dispatching sanitized perception to ${serverUrl}/api...`, 'info');
-    const startTime = performance.now();
+function showDecision(action) {
+  const verb = String(action.action || 'done').toUpperCase();
+  if (action.thought) log(`Thought: ${action.thought}`, 'info');
+  log(`VLM decided: ${verb} on "${action.target || ''}"`, 'success');
 
-    const response = await fetch(`${serverUrl}/api`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image: redactedUrl,
-        task: userGoal,
-        history: actionHistory,
-        manifest: manifest
-      })
-    });
+  actionVerbBadge.textContent = verb;
+  actionVerbBadge.className = 'badge badge-online';
+  actionThoughtEl.textContent = action.thought || '—';
+  actionTargetEl.textContent = action.target || 'None';
+  actionCoordsEl.textContent = Array.isArray(action.coordinates) ? `[${action.coordinates.join(', ')}]` : 'N/A';
+  actionValueEl.textContent = action.value || 'None';
+}
 
-    const elapsed = Math.round(performance.now() - startTime);
-    serverLatencyEl.textContent = `${elapsed}ms`;
-
-    if (!response.ok) {
-      throw new Error(`Server returned HTTP ${response.status}`);
-    }
-
-    const payload = await response.json();
-    const action = payload.action;
-
-    if (!action) {
-      throw new Error('Server returned empty action payload');
-    }
-
-    const verb = String(action.action || 'done').toUpperCase();
-    log(`VLM decided: ${verb} on "${action.target || ''}"`, 'success');
-
-    // Update Decision Card
-    actionVerbBadge.textContent = verb;
-    actionVerbBadge.className = 'badge badge-online';
-    actionTargetEl.textContent = action.target || 'None';
-    actionCoordsEl.textContent = Array.isArray(action.coordinates) ? `[${action.coordinates.join(', ')}]` : 'N/A';
-    actionValueEl.textContent = action.value || 'None';
-
-    // Append to conversation history for multi-turn coherence
-    actionHistory.push(JSON.stringify(action));
-
-    // Execute the action directly on the active webpage via content.js
-    log(`Executing ${action.action} on active tab...`, 'info');
+// Resolves with content.js's outcome and never rejects: a failed action is an observation for the model
+function executeOnPage(tabId, action) {
+  return new Promise((resolve) => {
     chrome.tabs.sendMessage(tabId, { action: 'EXECUTE_ACTION', data: action }, (res) => {
       if (chrome.runtime.lastError) {
-        log(`Execution dispatch warning: ${chrome.runtime.lastError.message}`, 'warning');
-      } else if (res && res.success) {
-        log(`Page execution: ${res.message}`, 'success');
+        resolve({ success: false, message: `No response from page: ${chrome.runtime.lastError.message}` });
       } else {
-        log(`Execution feedback: ${res?.message || 'Done'}`, 'info');
+        resolve({ success: Boolean(res?.success), message: res?.message || res?.error || 'No result reported' });
       }
     });
+  });
+}
 
-  } catch (err) {
-    log(`Step error: ${err.message}`, 'error');
-    actionVerbBadge.textContent = 'ERROR';
-    actionVerbBadge.className = 'badge badge-offline';
-  } finally {
-    stepButton.disabled = false;
-    sanitizeButton.disabled = false;
+// Lets click handlers, re-renders and smooth scrolling finish, then waits out any navigation the
+// action started, so the next screenshot shows the action's effect
+async function waitForPageSettle(tabId) {
+  await sleep(800);
+  for (let i = 0; i < 40; i++) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab || tab.status === 'complete') return;
+    await sleep(250);
   }
+}
+
+// One ReAct turn. The action is recorded together with its result, which the model reads next turn.
+async function runAgentStep(goal, step) {
+  const { redactedUrl, manifest, tabId } = await sanitizeActiveTab();
+  if (stopRequested) return { stopped: true };
+
+  log(`Step ${step}/${MAX_AGENT_STEPS}: dispatching sanitized perception to ${serverUrl}/api...`, 'info');
+  const startTime = performance.now();
+  serverRequest = new AbortController();
+  const response = await fetch(`${serverUrl}/api`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: redactedUrl, task: goal, history: actionHistory, manifest }),
+    signal: serverRequest.signal
+  });
+  serverLatencyEl.textContent = `${Math.round(performance.now() - startTime)}ms`;
+
+  if (!response.ok) {
+    throw new Error(`Server returned HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  // The server could not reach the LLM; retrying the same request would not help
+  if (payload.error) {
+    throw new Error(payload.error);
+  }
+  const action = payload.action;
+  if (!action) {
+    throw new Error('Server returned empty action payload');
+  }
+
+  showDecision(action);
+  if (action.action === 'done' || stopRequested) {
+    return { action, stopped: stopRequested };
+  }
+
+  log(`Executing ${action.action} on active tab...`, 'info');
+  const result = await executeOnPage(tabId, action);
+  log(`Page execution: ${result.message}`, result.success ? 'success' : 'warning');
+  actionHistory.push(JSON.stringify({ ...action, result: result.message }));
+  return { action, result, tabId };
+}
+
+async function runAgent() {
+  const goal = taskInput.value.trim();
+  if (!goal) {
+    log('Enter a task for the agent first.', 'warning');
+    taskInput.focus();
+    return;
+  }
+
+  agentRunning = true;
+  stopRequested = false;
+  actionHistory = [];
+  setAgentUi(true);
+  log(`Agent started: "${goal}"`, 'info');
+
+  let stalled = 0;
+  try {
+    for (let step = 1; step <= MAX_AGENT_STEPS; step++) {
+      actionVerbBadge.textContent = 'THINKING';
+      actionVerbBadge.className = 'badge badge-warning';
+
+      const { action, result, tabId, stopped } = await runAgentStep(goal, step);
+      if (stopped) {
+        log('Agent stopped by user.', 'warning');
+        return;
+      }
+      if (action.action === 'done') {
+        log(`Task complete after ${step} step(s).`, 'success');
+        return;
+      }
+
+      // Waiting or failing makes no progress; several in a row means the agent is stuck
+      stalled = (!result.success || action.action === 'wait') ? stalled + 1 : 0;
+      if (stalled >= MAX_STALLED_STEPS) {
+        log(`Agent stopped: ${stalled} steps in a row made no progress.`, 'error');
+        return;
+      }
+
+      await waitForPageSettle(tabId);
+      if (stopRequested) {
+        log('Agent stopped by user.', 'warning');
+        return;
+      }
+    }
+    log(`Agent stopped: reached the ${MAX_AGENT_STEPS}-step limit before the task was done.`, 'warning');
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      log('Agent stopped by user.', 'warning');
+    } else {
+      log(`Agent error: ${err.message}`, 'error');
+      actionVerbBadge.textContent = 'ERROR';
+      actionVerbBadge.className = 'badge badge-offline';
+    }
+  } finally {
+    agentRunning = false;
+    serverRequest = null;
+    setAgentUi(false);
+  }
+}
+
+function setAgentUi(running) {
+  stepButton.innerHTML = running ? '<span class="btn-icon">■</span> Stop' : '<span class="btn-icon">⚡</span> Run Agent';
+  stepButton.className = running ? 'btn btn-danger' : 'btn btn-primary';
+  stepButton.disabled = false;
+  sanitizeButton.disabled = running;
+  clearButton.disabled = running;
+  taskInput.disabled = running;
 }
 
 // 6. Event Listeners
@@ -356,7 +443,17 @@ serverUrlInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') saveServerUrl();
 });
 
-stepButton.addEventListener('click', runAIStep);
+stepButton.addEventListener('click', () => {
+  if (!agentRunning) {
+    runAgent();
+    return;
+  }
+  // Stop: cancel the in-flight server call; otherwise the loop exits at its next checkpoint
+  stopRequested = true;
+  serverRequest?.abort();
+  stepButton.disabled = true;
+  log('Stopping agent after the current operation...', 'warning');
+});
 
 sanitizeButton.addEventListener('click', async () => {
   sanitizeButton.disabled = true;
@@ -375,6 +472,7 @@ clearButton.addEventListener('click', () => {
   canvasPlaceholder.style.display = 'flex';
   actionVerbBadge.textContent = 'IDLE';
   actionVerbBadge.className = 'badge badge-neutral';
+  actionThoughtEl.textContent = '—';
   actionTargetEl.textContent = '—';
   actionCoordsEl.textContent = '—';
   actionValueEl.textContent = '—';

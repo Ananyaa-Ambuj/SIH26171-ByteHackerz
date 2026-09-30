@@ -60,7 +60,7 @@
       <!-- Action Buttons -->
       <div class="btn-grid">
         <button id="stepButton" class="btn btn-primary">
-          <span class="btn-icon">⚡</span> Run AI Step
+          <span class="btn-icon">⚡</span> Run Agent
         </button>
         <button id="sanitizeButton" class="btn btn-secondary">
           <span class="btn-icon">👁️</span> Sanitize Only
@@ -78,7 +78,7 @@
       <div class="canvas-wrapper">
         <canvas id="screenshotCanvas"></canvas>
         <div id="canvasPlaceholder" class="canvas-placeholder">
-          <span>Click "Run AI Step" or "Sanitize Only" to inspect sanitized page</span>
+          <span>Click "Run Agent" or "Sanitize Only" to inspect sanitized page</span>
         </div>
       </div>
       <div class="metrics-bar">
@@ -95,6 +95,10 @@
         <span id="actionVerbBadge" class="badge badge-neutral">IDLE</span>
       </div>
       <div class="action-details">
+        <div class="action-row thought-row">
+          <span class="label">Thought:</span>
+          <span id="actionThought" class="value">—</span>
+        </div>
         <div class="action-row">
           <span class="label">Target:</span>
           <span id="actionTarget" class="value">—</span>

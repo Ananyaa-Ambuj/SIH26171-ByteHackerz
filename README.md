@@ -143,11 +143,12 @@ python app.py
 ```powershell
 cd client-vision
 npm install
-npm run build:local
+npm run build
+cd ..
 python -m http.server 8080
 ```
 
-- Open **`http://localhost:8080/test.html`** in Google Chrome.
+- Open **`http://localhost:8080/client-vision/test.html`** in Google Chrome or Brave. The page runs the extension's own worker build (`extension/florence-worker.bundle.js`), so serve from the repository root.
 - Run instant on-device PII detection with WebGPU acceleration.
 
 ### 3. Chrome Extension Deployment

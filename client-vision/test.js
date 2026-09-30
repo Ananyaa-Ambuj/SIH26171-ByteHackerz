@@ -8,8 +8,8 @@ const output = document.getElementById('output');
 
 let isModelReady = false;
 
-// 1. Spawn the Florence Web Worker
-const worker = new Worker('florence-worker.bundle.js', { type: 'module' });
+// 1. Spawn the Florence Web Worker (the extension's build: `npm run build`, served from the repo root)
+const worker = new Worker('../extension/florence-worker.bundle.js', { type: 'module' });
 worker.postMessage({ type: 'LOAD_MODEL' });
 
 // 2. Listen for worker updates (download progress & results)

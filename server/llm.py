@@ -11,10 +11,14 @@ def load_config():
         return json.load(f)
 
 def generate_msg(manifest, image_b64, task, history, system_prompt):
+    # One numbered line per earlier step (the action plus its result), not a doubly-escaped JSON list
+    history_text = "\n".join(
+        f"{i}. {step if isinstance(step, str) else json.dumps(step)}" for i, step in enumerate(history, 1)
+    ) if history else "None"
     user_content = [
         {
             "type": "text",
-            "text": f"Previous Actions History:\n{json.dumps(history) if history else 'None'}"
+            "text": f"Previous Actions History:\n{history_text}"
         },
         {
             "type": "text",
@@ -112,5 +116,7 @@ def get_response(manifest, image_b64, task, history):
                 "coordinates": [0, 0],
                 "value": ""
             },
-            "raw_response": error_msg
+            "raw_response": error_msg,
+            # Lets the extension's agent loop stop instead of retrying a model it cannot reach
+            "error": error_msg
         }

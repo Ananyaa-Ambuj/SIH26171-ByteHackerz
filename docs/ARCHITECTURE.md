@@ -119,9 +119,10 @@ To ensure the upstream Vision-Language Model can reason about the page structure
 The server acts as a stateless, model-agnostic controller. It translates the visual interface and manifest into the standard OpenAI Multimodal Chat Completion format:
 
 1. **System Prompt Grounding:** Informs the model that black boxes and blurred regions represent confidential user data and must not be guessed.
-2. **Action Grammar:** Constrains the VLM's output to strict, parseable JSON actions:
+2. **Action Grammar:** Constrains the VLM's output to strict, parseable JSON actions, with a short reasoning trace first (ReAct):
    ```json
    {
+     "thought": "Brief reasoning about the page and why this action is next",
      "action": "click" | "type" | "scroll" | "wait" | "done",
      "target": "Element description or button label",
      "coordinates": [x, y],
@@ -129,3 +130,14 @@ The server acts as a stateless, model-agnostic controller. It translates the vis
    }
    ```
 3. **Regex Extraction Fallback:** In the event that conversational models wrap their response in Markdown prose, the server executes regex boundary matching (`r'\{.*\}'`) to guarantee reliable JSON extraction.
+
+## 5. The Agent Loop (Side Panel)
+
+"Run Agent" repeats **observe → reason + act → execute** until the task is finished:
+
+1. **Observe:** Pass 1 + Pass 2 sanitize a fresh screenshot of the active tab.
+2. **Reason + act:** The server returns one action with its `thought`.
+3. **Execute:** `content.js` performs it; the outcome (e.g. `Clicked element at (96, 318)` or `Could not find element at coordinates`) is appended to the history as the observation the model reads next turn.
+4. **Settle:** The loop waits for re-renders and any navigation to finish, then observes again.
+
+It stops on `"done"`, the Stop button, 15 steps, 3 consecutive steps without progress (failed or `wait` actions), or when the server reports that the LLM is unreachable. A failed redaction aborts the run, so nothing unsanitized is ever sent.

@@ -18,7 +18,7 @@ Receives a sanitized screenshot, task description, action history, and redaction
   "image": "data:image/png;base64,iVBORw0KGgo...",
   "task": "Click on the Submit button to complete registration",
   "history": [
-    "{\"action\": \"type\", \"target\": \"username\", \"value\": \"demo_user\"}"
+    "{\"thought\": \"Fill the username first\", \"action\": \"type\", \"target\": \"username\", \"value\": \"demo_user\", \"result\": \"Typed into target\"}"
   ],
   "manifest": {
     "redacted_regions": [
@@ -41,8 +41,8 @@ Receives a sanitized screenshot, task description, action history, and redaction
 | :--- | :---: | :---: | :--- |
 | `image` | `string` | **Yes** | Base64-encoded PNG/JPEG data URI of the sanitized screenshot. |
 | `task` | `string` | **Yes** | Natural language user objective (e.g. *"Log into the portal"*). |
-| `history` | `string[]` | No | Serialized list of previously executed action JSONs for multi-turn coherence. |
-| `manifest` | `object` | No | Redaction metadata detailing what types of PII were occluded and their coordinates. |
+| `history` | `string[]` | No | Earlier steps of the current agent run, each a serialized action JSON plus the `result` the page reported (the ReAct observation). |
+| `manifest` | `object` | No | Redaction metadata: occluded PII types and coordinates (`redacted_regions`), `screenshot_dimensions`, and `dom_structure` (visible buttons, form fields; never field values). |
 
 ---
 
@@ -51,6 +51,7 @@ Receives a sanitized screenshot, task description, action history, and redaction
 ```json
 {
   "action": {
+    "thought": "The form is filled, so submit it",
     "action": "click",
     "target": "Submit",
     "coordinates": [625, 405],
@@ -62,11 +63,13 @@ Receives a sanitized screenshot, task description, action history, and redaction
 
 | Field | Type | Description |
 | :--- | :---: | :--- |
-| `action.action` | `string` | Action grammar verb: `"click"`, `"type"`, `"scroll"`, `"wait"`, `"done"`. |
+| `action.thought` | `string` | The model's brief reasoning for this step (ReAct), shown in the side panel. |
+| `action.action` | `string` | Action grammar verb: `"click"`, `"type"`, `"scroll"`, `"wait"`, `"done"`. The extension's agent loop runs until `"done"`. |
 | `action.target` | `string` | Human-readable label or description of the target DOM element. |
 | `action.coordinates` | `[number, number]` | `[x, y]` viewport pixel coordinates for the synthetic interaction. |
 | `action.value` | `string` | Input string if action is `"type"`, or `"up"`/`"down"` if action is `"scroll"`. |
 | `raw_response` | `string` | Verbatim text returned by the VLM prior to regex JSON parsing. |
+| `error` | `string` | Present only when the server got no answer from the VLM (unreachable, HTTP error). `action` is then a placeholder `"wait"` and the extension's agent loop stops. |
 
 ---
 
