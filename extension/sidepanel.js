@@ -32,6 +32,16 @@ const actionCoordsEl = document.getElementById('actionCoords');
 const actionValueEl = document.getElementById('actionValue');
 const auditLog = document.getElementById('auditLog');
 
+// Progress bar elements
+const modelProgress = document.getElementById('modelProgress');
+const progressBar = document.getElementById('progressBar');
+const progressText = document.getElementById('progressText');
+const progressPercent = document.getElementById('progressPercent');
+
+// Theme elements
+const themeToggle = document.getElementById('themeToggle');
+const themeIcon = document.getElementById('themeIcon');
+
 // 1. Audit Logger Helper
 function log(msg, type = 'info') {
   const entry = document.createElement('div');
@@ -41,6 +51,43 @@ function log(msg, type = 'info') {
   auditLog.appendChild(entry);
   auditLog.scrollTop = auditLog.scrollHeight;
 }
+
+// 1b. Theme System (auto / light / dark)
+const THEME_MODES = ['auto', 'light', 'dark'];
+const THEME_ICONS = { auto: '🖥️', light: '☀️', dark: '🌙' };
+let currentThemeMode = 'auto';
+
+function getSystemTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(mode) {
+  currentThemeMode = mode;
+  const effective = mode === 'auto' ? getSystemTheme() : mode;
+  document.documentElement.setAttribute('data-theme', effective);
+  themeIcon.textContent = THEME_ICONS[mode];
+  themeToggle.title = `Theme: ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+}
+
+async function loadTheme() {
+  try {
+    const data = await chrome.storage.local.get(['privagTheme']);
+    applyTheme(data.privagTheme || 'auto');
+  } catch (e) {
+    applyTheme('auto');
+  }
+}
+
+themeToggle.addEventListener('click', async () => {
+  const next = THEME_MODES[(THEME_MODES.indexOf(currentThemeMode) + 1) % THEME_MODES.length];
+  applyTheme(next);
+  try { await chrome.storage.local.set({ privagTheme: next }); } catch (e) {}
+  log(`Theme → ${next}`, 'info');
+});
+
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (currentThemeMode === 'auto') applyTheme('auto');
+});
 
 // 2. Server URL Persistence & Health Check
 async function loadServerUrl() {
@@ -90,7 +137,7 @@ async function setupOffscreenDocument() {
   try {
     await chrome.offscreen.createDocument({
       url: 'offscreen.html',
-      reasons: ['DOM_PARSING'],
+      reasons: ['DOM_PARSER', 'WORKERS'],
       justification: 'Running Florence-2 Web Worker & HTML5 Canvas 2D operations.'
     });
     log('Offscreen vision worker host initialized.', 'info');
@@ -102,15 +149,44 @@ async function setupOffscreenDocument() {
 }
 
 // Listen for model state announcements from offscreen worker
-chrome.runtime.onMessage.addListener((msg) => {
+function handleModelMessage(msg) {
   if (msg.type === 'MODEL_READY') {
-    modelBadge.textContent = 'WebGPU: Ready';
-    modelBadge.className = 'badge badge-online';
-    log('Florence-2 vision model loaded on WebGPU!', 'success');
+    modelProgress.style.display = 'none';
+    const onGpu = msg.device === 'webgpu';
+    modelBadge.textContent = onGpu ? 'WebGPU: Ready' : 'WASM: Ready';
+    modelBadge.className = onGpu ? 'badge badge-online' : 'badge badge-warning';
+    log(`Florence-2 vision model loaded on ${onGpu ? 'WebGPU' : 'WASM (CPU fallback, slow)'}!`, onGpu ? 'success' : 'warning');
+  } else if (msg.type === 'PROGRESS') {
+    const p = msg.progress;
+    // Use the aggregate over all model files; per-file events made the bar jump between files
+    if (p && p.status === 'progress_total' && typeof p.progress === 'number') {
+      modelProgress.style.display = 'block';
+      const pct = Math.round(p.progress);
+      progressBar.style.width = `${pct}%`;
+      progressPercent.textContent = `${pct}%`;
+      progressText.textContent = p.file ? `Loading ${p.file.split('/').pop()}` : 'Loading model...';
+      modelBadge.textContent = `Model: ${pct}%`;
+    }
   } else if (msg.type === 'STATUS') {
     log(`[Worker] ${msg.message}`, 'info');
+  } else if (msg.type === 'ERROR') {
+    modelProgress.style.display = 'none';
+    modelBadge.textContent = 'Model: Failed';
+    modelBadge.className = 'badge badge-offline';
+    log(`[Worker] ${msg.error}`, 'error');
   }
-});
+}
+chrome.runtime.onMessage.addListener(handleModelMessage);
+
+// A panel opened after loading finished missed the one-time MODEL_READY / ERROR broadcast, so ask for it
+async function syncModelStatus() {
+  try {
+    const state = await chrome.runtime.sendMessage({ action: 'GET_MODEL_STATUS' });
+    if (state) handleModelMessage(state);
+  } catch (e) {
+    // Offscreen document not reachable yet; it will broadcast its state when loading finishes
+  }
+}
 
 // 4. Capture & Sanitize Page (On-Device Dual-Pass)
 async function sanitizeActiveTab() {
@@ -132,6 +208,15 @@ async function sanitizeActiveTab() {
     console.warn('Content script already present or injected:', e);
   }
 
+  // Pass 1: deterministic DOM scan, taken right before the capture so its boxes match the pixels
+  let domScan = { regions: [], dom_structure: null };
+  try {
+    domScan = (await chrome.tabs.sendMessage(activeTab.id, { action: 'SCAN_PII' })) || domScan;
+    log(`DOM scan found ${domScan.regions.length} PII regions in ${domScan.scanMs ?? 0}ms`, 'info');
+  } catch (e) {
+    log(`DOM scan unavailable on this page (${e.message}); relying on the vision pass only`, 'warning');
+  }
+
   const rawScreenshot = await chrome.tabs.captureVisibleTab(
     activeTab.windowId,
     { format: 'png' }
@@ -141,7 +226,7 @@ async function sanitizeActiveTab() {
 
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
-      { action: 'RUN_FLORENCE', image: rawScreenshot },
+      { action: 'RUN_FLORENCE', image: rawScreenshot, domRegions: domScan.regions },
       (response) => {
         if (chrome.runtime.lastError) {
           log(`Vision error: ${chrome.runtime.lastError.message}`, 'error');
@@ -169,10 +254,11 @@ async function sanitizeActiveTab() {
           visionLatencyEl.textContent = `${response.latencyMs || 0}ms`;
           redactionCountEl.textContent = count;
 
-          log(`Visual redaction complete (${count} regions occluded in ${response.latencyMs}ms)`, 'success');
+          const domCount = domScan.regions.length;
+          log(`Redaction complete: ${count} regions occluded (${domCount} DOM + ${count - domCount} vision in ${response.latencyMs}ms)`, 'success');
           resolve({
             redactedUrl: response.redactedUrl,
-            manifest: response.manifest || { redacted_regions: [] },
+            manifest: { ...(response.manifest || { redacted_regions: [] }), dom_structure: domScan.dom_structure },
             mockedMappings: response.mockedMappings || [],
             tabId: activeTab.id
           });
@@ -223,13 +309,14 @@ async function runAIStep() {
       throw new Error('Server returned empty action payload');
     }
 
-    log(`VLM decided: ${action.action.toUpperCase()} on "${action.target || ''}"`, 'success');
+    const verb = String(action.action || 'done').toUpperCase();
+    log(`VLM decided: ${verb} on "${action.target || ''}"`, 'success');
 
     // Update Decision Card
-    actionVerbBadge.textContent = (action.action || 'DONE').toUpperCase();
+    actionVerbBadge.textContent = verb;
     actionVerbBadge.className = 'badge badge-online';
     actionTargetEl.textContent = action.target || 'None';
-    actionCoordsEl.textContent = action.coordinates ? `[${action.coordinates.join(', ')}]` : 'N/A';
+    actionCoordsEl.textContent = Array.isArray(action.coordinates) ? `[${action.coordinates.join(', ')}]` : 'N/A';
     actionValueEl.textContent = action.value || 'None';
 
     // Append to conversation history for multi-turn coherence
@@ -302,5 +389,6 @@ clearButton.addEventListener('click', () => {
 setInterval(checkServerHealth, 15000);
 
 // Initialize on mount
+loadTheme();
 loadServerUrl();
-setupOffscreenDocument();
+setupOffscreenDocument().then(syncModelStatus);

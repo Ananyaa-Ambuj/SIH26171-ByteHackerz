@@ -152,10 +152,17 @@ python -m http.server 8080
 
 ### 3. Chrome Extension Deployment
 
-1. Open Google Chrome and navigate to `chrome://extensions/`.
-2. Enable **Developer mode** (top right toggle).
-3. Click **Load unpacked** and select the `extension/` directory.
-4. Pin the **Privag AI** icon and launch the agent on any web form.
+1. Build the vision worker into the extension (only needed after changing `client-vision/worker.js` or its dependencies):
+   ```powershell
+   cd client-vision
+   npm install
+   npm run build
+   ```
+   This writes `extension/florence-worker.bundle.js` and copies ONNX Runtime's `ort-wasm-simd-threaded.asyncify.mjs` / `.wasm` next to it. The extension must ship these files: its Content Security Policy blocks loading them from a CDN, which otherwise breaks both WebGPU and the WASM fallback.
+2. Open Google Chrome (or Brave) and navigate to `chrome://extensions/` (`brave://extensions/`).
+3. Enable **Developer mode** (top right toggle).
+4. Click **Load unpacked** and select the `extension/` directory.
+5. Pin the **Privag AI** icon and launch the agent on any web form. The first launch downloads the Florence-2 weights (~340 MB); they are cached by the browser afterwards.
 
 ---
 

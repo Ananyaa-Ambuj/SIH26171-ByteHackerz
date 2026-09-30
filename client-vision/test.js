@@ -14,7 +14,7 @@ worker.postMessage({ type: 'LOAD_MODEL' });
 
 // 2. Listen for worker updates (download progress & results)
 worker.addEventListener('message', (e) => {
-    const { type, message, progress, regions, latencyMs, error } = e.data;
+    const { type, message, progress, regions, latencyMs, error, device } = e.data;
 
     if (type === 'STATUS') {
         statusDiv.textContent = `ℹ️ ${message}`;
@@ -25,7 +25,7 @@ worker.addEventListener('message', (e) => {
         }
     } else if (type === 'MODEL_READY') {
         isModelReady = true;
-        statusDiv.textContent = '✅ Florence-2 Model Ready on WebGPU!';
+        statusDiv.textContent = `✅ Florence-2 Model Ready on ${device === 'webgpu' ? 'WebGPU' : 'WASM (CPU fallback)'}!`;
         statusDiv.className = 'ready';
         detectBtn.disabled = false;
     } else if (type === 'RESULTS') {

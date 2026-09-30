@@ -1,9 +1,13 @@
 import requests
 import json
 import re
+import os
+
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_CONFIG_PATH = os.path.join(_BASE_DIR, 'static', 'config.json')
 
 def load_config():
-    with open('static/config.json', 'r') as f:
+    with open(_CONFIG_PATH, 'r') as f:
         return json.load(f)
 
 def generate_msg(manifest, image_b64, task, history, system_prompt):
@@ -46,16 +50,23 @@ def generate_msg(manifest, image_b64, task, history, system_prompt):
 
 def parse_action(response_text):
     # regex for formatting into structured json
+    action = None
     try:
-        return json.loads(response_text.strip())
-    except:
-        match = re.search(r'\{.*\}', response_text, re.DOTALL) 
+        action = json.loads(response_text.strip())
+    except (json.JSONDecodeError, ValueError):
+        match = re.search(r'\{.*\}', response_text, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group(0)) 
-            except:
+                action = json.loads(match.group(0))
+            except (json.JSONDecodeError, ValueError):
                 pass
+
+    # The extension needs exactly one action object; some models wrap it in a list
+    if isinstance(action, list) and action and isinstance(action[0], dict):
+        action = action[0]
+    if not isinstance(action, dict):
         return {"action": "wait", "target": "Could not parse action", "value": ""}
+    return action
 
 def get_response(manifest, image_b64, task, history):
     # Config Load
@@ -84,7 +95,8 @@ def get_response(manifest, image_b64, task, history):
         res.raise_for_status()
         response = res.json()
 
-        raw_content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        # content is null when a model answers with only tool calls / reasoning
+        raw_content = response.get("choices", [{}])[0].get("message", {}).get("content") or ""
         action = parse_action(raw_content)
 
         return {

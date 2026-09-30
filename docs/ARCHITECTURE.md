@@ -37,13 +37,16 @@ By decoupling visual perception into an **on-device privacy boundary** and an **
 
 - **Execution Environment:** Injected Content Script (`content.js`).
 - **Runtime:** $<20\text{ms}$ execution latency, 0 MB GPU VRAM.
-- **Mechanism:** Queries all standard sensitive DOM elements:
-  - Passwords: `input[type="password"]`
-  - Emails: `input[type="email"]`, `input[name*="email"]`, `input[autocomplete="email"]`
-  - Phone Numbers: `input[type="tel"]`, `input[name*="phone"]`, `input[name*="mobile"]`
-  - Government IDs: `input[name*="aadhaar"]`, `input[name*="pan"]`, `input[placeholder*="PAN"]`
-  - Banking Details: `input[autocomplete="cc-number"]`
-- **Output:** Precise pixel coordinates derived from `element.getBoundingClientRect()`.
+- **Mechanism:**
+  1. **Visible page text:** Runs exact Aadhaar, PAN, mobile-number and email patterns over every visible DOM text node and boxes each match with a `Range`, so PII rendered as HTML text never depends on OCR accuracy.
+  2. **Form fields:** Redacts every non-empty field that is sensitive by purpose, or whose value matches a PII pattern:
+     - Passwords: `input[type="password"]`
+     - Emails: `type="email"`, `autocomplete="email"`, or "email" in the name / id / placeholder / aria-label
+     - Phone Numbers: `type="tel"`, `autocomplete="tel*"`, or "phone" / "mobile" in those attributes
+     - Government IDs: "aadhaar" in those attributes, or "PAN" as a whole word (so fields such as `company` are not caught)
+     - Banking Details: `autocomplete="cc-*"`
+  3. **Page context:** Collects `visible_buttons` and `form_fields` for the manifest's `dom_structure`. PII inside labels is scrubbed and field values are never included.
+- **Output:** Pixel boxes from `getClientRects()` / `getBoundingClientRect()`, scaled by `devicePixelRatio` into screenshot pixels and drawn by the same Canvas engine as the vision regions (`source: "dom_text"` / `"dom_field"` in the manifest).
 
 ### 2.2 Pass 2: Florence-2 On-Device Vision Engine
 
@@ -55,6 +58,7 @@ By decoupling visual perception into an **on-device privacy boundary** and an **
 - **Post-Processing:**
   - **NMS Face Merging:** Merges overlapping multi-token face boxes (eyes, nose, head, person) into a single unified bounding box.
   - **Regex PII Filter:** Validates OCR tokens against Indian Aadhaar, PAN card, mobile numbers, and email patterns.
+  - **Label Context Rule:** An OCR line holding a PII label (Aadhaar, PAN, phone/mobile, email) plus a value-like token (3+ digits or an `@`) is redacted even when OCR garbled the value, e.g. `PAN Card: ABCDE123RF`. Bare labels such as "PAN Number" stay visible for the agent.
 
 ### 2.3 Pass 3: The Canvas Redaction Engine
 

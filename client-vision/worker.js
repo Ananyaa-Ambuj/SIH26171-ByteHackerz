@@ -1,9 +1,16 @@
 import {
+    env,
     Florence2ForConditionalGeneration,
     AutoProcessor,
     AutoTokenizer,
     RawImage,
 } from '@huggingface/transformers';
+
+// Load ONNX Runtime's WebGPU/WASM runtime from the files copied next to this bundle by
+// copy-ort-runtime.mjs. By default transformers.js imports it from the jsdelivr CDN through a
+// blob: URL, which the extension CSP (script-src 'self') blocks -- killing WebGPU *and* the
+// WASM fallback, since ONNX Runtime refuses to re-initialize after a failed first attempt.
+env.backends.onnx.wasm.wasmPaths = new URL('./', import.meta.url).href;
 
 let model = null;
 let processor = null;
@@ -15,8 +22,8 @@ const PII_PATTERNS = {
     aadhaar: /\d{4}[\s-]?\d{4}[\s-]?\d{4}/,
     // PAN: 5 letters, 4 digits, 1 letter (case insensitive)
     pan: /[A-Z]{5}[0-9O]{4}[A-Z]/i,
-    // Phone: 10 digits
-    phone: /(?:[6-9]\d{9})/,
+    // Phone: 10 digits, optionally written as 5+5 (e.g. "98765 43210")
+    phone: /[6-9]\d{4}[\s-]?\d{5}/,
     // Email
     email: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
 };
@@ -31,14 +38,65 @@ function matchPII(text) {
     return matches.length > 0 ? matches : null;
 }
 
+// Labels that mark an OCR line as PII even when OCR garbles the value itself, e.g. "PAN Card: ABCDE123RF"
+// (a 4 misread as R) or "Aadhaar No: 9876432 1098" (a dropped digit) slip past the strict patterns above
+const PII_LABELS = {
+    aadhaar: /aadha?ar|adhaa?r/i,
+    pan: /\bPAN\b/,
+    phone: /phone|mobile/i,
+    email: /e-?mail/i,
+};
+
+function matchLabeledPII(text) {
+    // Only when the line also holds a value-looking token (3+ digits, or an '@'), so bare field
+    // labels such as "PAN Number" stay readable for the agent
+    const hasValue = (text.match(/[A-Za-z0-9@._-]{6,}/g) || [])
+        .some((token) => token.includes('@') || (token.match(/\d/g) || []).length >= 3);
+    if (!hasValue) return null;
+    const matches = Object.keys(PII_LABELS).filter((type) => PII_LABELS[type].test(text));
+    return matches.length > 0 ? matches : null;
+}
+
+// Repeatedly replaces any two intersecting {x, y, w, h} boxes with their bounding union until none intersect
+function mergeOverlappingBoxes(boxes) {
+    const merged = boxes.map((b) => ({ ...b }));
+    let changed = true;
+    while (changed) {
+        changed = false;
+        // Rescan from the start after every merge: the grown union can reach boxes already checked
+        for (let i = 0; i < merged.length && !changed; i++) {
+            for (let j = i + 1; j < merged.length && !changed; j++) {
+                const a = merged[i];
+                const b = merged[j];
+                if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) {
+                    const x = Math.min(a.x, b.x);
+                    const y = Math.min(a.y, b.y);
+                    merged[i] = { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+                    merged.splice(j, 1);
+                    changed = true;
+                }
+            }
+        }
+    }
+    return merged;
+}
+
 async function loadModel() {
-    const model_id = 'onnx-community/Florence-2-large-ft';
+    const model_id = 'onnx-community/Florence-2-base-ft';
 
     self.postMessage({ type: 'STATUS', message: 'Loading Florence-2 on WebGPU...' });
 
     try {
         model = await Florence2ForConditionalGeneration.from_pretrained(model_id, {
-            dtype: 'fp32',
+            // Per-module precision recommended for Florence-2 on WebGPU (transformers.js dtypes guide):
+            // the encoders are sensitive to quantization; fp16/q4 keeps download and VRAM small
+            // (full fp32 is ~1 GB for base-ft and ~3.1 GB for large-ft, too much for a 4 GB GPU).
+            dtype: {
+                embed_tokens: 'fp16',
+                vision_encoder: 'fp16',
+                encoder_model: 'q4',
+                decoder_model_merged: 'q4',
+            },
             device: 'webgpu',
             progress_callback: (progress) => {
                 self.postMessage({ type: 'PROGRESS', progress });
@@ -48,18 +106,25 @@ async function loadModel() {
         processor = await AutoProcessor.from_pretrained(model_id);
         tokenizer = await AutoTokenizer.from_pretrained(model_id);
 
-        self.postMessage({ type: 'MODEL_READY' });
+        self.postMessage({ type: 'MODEL_READY', device: 'webgpu' });
     } catch (err) {
         self.postMessage({ type: 'STATUS', message: `WebGPU unavailable (${err.message}). Falling back to WASM...` });
 
-        model = await Florence2ForConditionalGeneration.from_pretrained(model_id, {
-            dtype: 'q4',
-            device: 'wasm',
-        });
-        processor = await AutoProcessor.from_pretrained(model_id);
-        tokenizer = await AutoTokenizer.from_pretrained(model_id);
+        try {
+            model = await Florence2ForConditionalGeneration.from_pretrained(model_id, {
+                dtype: 'q4',
+                device: 'wasm',
+                progress_callback: (progress) => {
+                    self.postMessage({ type: 'PROGRESS', progress });
+                },
+            });
+            processor = await AutoProcessor.from_pretrained(model_id);
+            tokenizer = await AutoTokenizer.from_pretrained(model_id);
 
-        self.postMessage({ type: 'MODEL_READY' });
+            self.postMessage({ type: 'MODEL_READY', device: 'wasm' });
+        } catch (wasmErr) {
+            self.postMessage({ type: 'ERROR', error: `WASM fallback failed: ${wasmErr.message}` });
+        }
     }
 }
 
@@ -102,33 +167,29 @@ async function detectPII(imageDataUrl) {
     if (odData && odBoxes && odData.labels) {
         odData.labels.forEach((label, idx) => {
             const lower = label.toLowerCase();
-            if (lower.includes('face') || lower.includes('person') || lower.includes('head') || lower.includes('woman') || lower.includes('man')) {
+            if (lower.includes('face') || lower.includes('person') || lower.includes('head') || lower.includes('woman') || lower.includes('man') ||
+                lower.includes('boy') || lower.includes('girl') || lower.includes('child')) {
                 rawFaces.push(extractBox(odBoxes[idx]));
             }
         });
     }
 
-    // Merge overlapping face boxes so we get ONE clean box
-    if (rawFaces.length > 0) {
-        // Find outer bounding box that covers all detected facial parts
-        const minX = Math.min(...rawFaces.map(f => f.x));
-        const minY = Math.min(...rawFaces.map(f => f.y));
-        const maxX = Math.max(...rawFaces.map(f => f.x + f.w));
-        const maxY = Math.max(...rawFaces.map(f => f.y + f.h));
-
+    // Merge overlapping face-part boxes (eyes, head, person) into ONE clean box per person.
+    // Boxes that don't overlap stay separate, so two people far apart don't blur everything between them.
+    mergeOverlappingBoxes(rawFaces).forEach((face) => {
         regions.push({
             type: 'face',
             source: 'florence_od',
             method: 'gaussian_blur',
             confidence: 0.95,
             bbox: {
-                x: Math.round(minX),
-                y: Math.round(minY),
-                w: Math.round(maxX - minX),
-                h: Math.round(maxY - minY),
+                x: Math.round(face.x),
+                y: Math.round(face.y),
+                w: Math.round(face.w),
+                h: Math.round(face.h),
             },
         });
-    }
+    });
 
     // -----------------------------------------------------------------
     // Task B: OCR with Region (<OCR_WITH_REGION>) — Text PII
@@ -146,7 +207,7 @@ async function detectPII(imageDataUrl) {
 
     if (ocrData && ocrBoxes && ocrData.labels) {
         ocrData.labels.forEach((text, idx) => {
-            const piiTypes = matchPII(text);
+            const piiTypes = matchPII(text) || matchLabeledPII(text);
             if (piiTypes) {
                 const b = extractBox(ocrBoxes[idx]);
                 regions.push({
@@ -172,7 +233,8 @@ async function detectPII(imageDataUrl) {
 
 // Worker Message Listener — Interface to Extension / Webpage
 self.addEventListener('message', async (e) => {
-    const { type, imageDataUrl } = e.data;
+    // requestId is echoed back so the caller can match replies when detections overlap
+    const { type, imageDataUrl, requestId } = e.data;
 
     if (type === 'LOAD_MODEL') {
         try {
@@ -190,11 +252,12 @@ self.addEventListener('message', async (e) => {
 
             self.postMessage({
                 type: 'RESULTS',
+                requestId,
                 regions,
                 latencyMs: elapsedMs,
             });
         } catch (err) {
-            self.postMessage({ type: 'ERROR', error: err.message });
+            self.postMessage({ type: 'ERROR', requestId, error: err.message });
         }
     }
 });

@@ -16,7 +16,7 @@ CRITICAL RULES:
 
 window.onload = async function () {
     // server url
-    document.getElementById('extensionUrlDisplay').innerText = window.location.origin + '/api';
+    document.getElementById('extensionUrlDisplay').innerText = window.location.origin;
 
     // Put default prompt
     document.getElementById('systemPrompt').value = DEFAULT_PROMPT;

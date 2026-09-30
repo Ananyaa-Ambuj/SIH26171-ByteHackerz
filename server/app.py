@@ -1,6 +1,7 @@
 from flask import render_template, Flask, request, jsonify
 import llm
 import json
+import os
 
 app = Flask(__name__)
 
@@ -36,12 +37,17 @@ def api_status():
 @app.route('/api/config', methods=['GET', 'POST'])
 def config():
     if request.method == 'POST':
-        data = request.get_json()
-        with open('static/config.json', 'w') as f:
+        data = request.get_json(silent=True)
+        # Writing anything but an object would break every later /api call until config.json is fixed by hand
+        if not isinstance(data, dict):
+            return jsonify({"status": "error", "message": "Config must be a JSON object"}), 400
+        with open(llm._CONFIG_PATH, 'w') as f:
             json.dump(data, f)
         return jsonify({"status": "success", "config": data})
     else:
-        with open('static/config.json', 'r') as f:
+        if not os.path.exists(llm._CONFIG_PATH):
+            return jsonify({})
+        with open(llm._CONFIG_PATH, 'r') as f:
             data = json.load(f)
             return jsonify(data)
 

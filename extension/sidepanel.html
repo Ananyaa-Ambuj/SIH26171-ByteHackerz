@@ -16,11 +16,25 @@
           <p class="subtitle">On-Device PII Firewall & Agent</p>
         </div>
       </div>
-      <div class="badges">
-        <span id="serverBadge" class="badge badge-offline">Server: Offline</span>
-        <span id="modelBadge" class="badge badge-purple">WebGPU: Init</span>
+      <div class="header-actions">
+        <button id="themeToggle" class="theme-toggle" title="Theme: Auto"><span id="themeIcon">🖥️</span></button>
+        <div class="badges">
+          <span id="serverBadge" class="badge badge-offline">Server: Offline</span>
+          <span id="modelBadge" class="badge badge-purple">WebGPU: Init</span>
+        </div>
       </div>
     </header>
+
+    <!-- Florence-2 Model Loading Progress -->
+    <div id="modelProgress" class="progress-container" style="display: none;">
+      <div class="progress-info">
+        <span id="progressText">Loading model...</span>
+        <span id="progressPercent" class="progress-percent">0%</span>
+      </div>
+      <div class="progress-track">
+        <div id="progressBar" class="progress-fill"></div>
+      </div>
+    </div>
 
     <!-- Server Settings Bar -->
     <section class="section card settings-card">
