@@ -145,6 +145,14 @@ async function runVision(img, mediaRegions, domRegions) {
     }
 
     const unscannable = mediaRegions.filter((r) => r.unscannable);
+    // Florence can name a face or a text line without giving it a box: what has no position cannot be
+    // masked, so the frame is withheld
+    const noBox = (b) => !(b.w > 0 && b.h > 0);
+    if (result.regions.some((r) => noBox(r.bbox)) || (unscannable.length && result.otherText.some(noBox))) {
+        const error = new Error('the vision model reported a face or text without a usable position');
+        error.code = 'VISION_INCOMPLETE';
+        throw error;
+    }
     const unverified = result.otherText
         .filter((b) => unscannable.some((area) => contains(area, b.x + b.w / 2, b.y + b.h / 2)))
         .map((bbox) => ({ type: 'unverified_text', source: 'florence_ocr', method: 'black_box', bbox }));
