@@ -103,3 +103,8 @@ button:hover {
     border-radius: 4px;
     font-size: 13px;
 }
+.alert.error {
+    background: #fdecec;
+    border-color: #f2c4c4;
+    color: #8a1f1f;
+}
