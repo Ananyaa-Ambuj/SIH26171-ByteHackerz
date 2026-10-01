@@ -203,8 +203,7 @@ async function detectPII(imageDataUrl) {
     const ocrData = ocrParsed[ocrTask] || ocrParsed;
     const ocrBoxes = ocrData?.quad_boxes || ocrData?.bboxes;
 
-    console.log('[Florence OCR Raw Output]:', ocrData);
-
+    // Never log ocrData: it holds every recognised line, PII included
     if (ocrData && ocrBoxes && ocrData.labels) {
         ocrData.labels.forEach((text, idx) => {
             const piiTypes = matchPII(text) || matchLabeledPII(text);
