@@ -92,9 +92,12 @@ globalThis.PIIMasker ??= class PIIMasker {
     };
     const whole = (value) => new RegExp(`(?<![\\w])${PIIMasker.escape(value)}(?![\\w])`, 'g');
 
+    // Marked secrets enter the vault first, so an unmarked repeat later in the same text is masked too
     find(/\{\{([^{}]+)\}\}/g, (m) => {
       const secret = m[1].trim();
-      if (secret) claim(m.index, m.index + m[0].length, () => this.getFakeValue(secret, 'password', origin));
+      if (!secret) return;
+      const fake = this.getFakeValue(secret, 'password', origin);
+      claim(m.index, m.index + m[0].length, () => fake);
     });
     for (const [fake, real] of [...this.reverseVault].sort((a, b) => b[1].length - a[1].length)) {
       if (real.length < PIIMasker.MIN_REAL_LENGTH) continue;
