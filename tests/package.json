@@ -1,0 +1,8 @@
+{
+  "name": "privag-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:unit": "node --test \"unit/*.test.mjs\""
+  }
+}
