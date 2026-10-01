@@ -564,7 +564,11 @@ async function runAgentStep() {
   const roundTrip = elapsed(startTime);
   serverRequest = null;
   serverLatencyEl.textContent = `${roundTrip}ms`;
-  if (!response.ok) throw new Error(payload.error || `Server returned HTTP ${response.status}`);
+  // The server explains its refusals (400: which check failed; 502: why the LLM call failed)
+  if (!response.ok) {
+    const detail = Array.isArray(payload.details) && payload.details.length ? ` (${payload.details[0]})` : '';
+    throw new Error(`${payload.error || `Server returned HTTP ${response.status}`}${detail}`);
+  }
   const vlm = Number.isFinite(payload.timing?.vlm_ms) ? payload.timing.vlm_ms : null;
   Object.assign(timing, { server: roundTrip, vlm, network: vlm === null ? null : Math.max(0, roundTrip - vlm) });
   // The user switched away while the model was thinking: this action is dropped, the step is redone on Resume
