@@ -1,3 +1,7 @@
 */*.venv/*
 */*__pycache__/*
 */node_modules/*
+# Server runtime config written by the dashboard (can hold an API key) and local env files
+server/config.json
+server/config.json.tmp
+server/.env
