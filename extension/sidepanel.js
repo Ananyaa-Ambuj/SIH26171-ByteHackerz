@@ -3,9 +3,10 @@
 
 let serverUrl = 'http://localhost:5000';
 let actionHistory = [];
-// The run's PII vault (pii-masker.js): everything sent to the server carries its fakes, and fakes the model
-// types are turned back into the real values here, right before execution. Real values never leave the device.
-let masker = new PIIMasker();
+// The task's PII vault (pii-masker.js): everything sent to the server carries its fakes, and a fake the model
+// types becomes the real value only where it belongs, right before execution. Memory-only, and it lives as long
+// as the task: cleared when the task ends (done, Stop, its tab closed, a new task, Clear), kept while paused.
+const masker = new PIIMasker();
 
 // DOM Elements
 const serverBadge = document.getElementById('serverBadge');
@@ -20,6 +21,11 @@ const taskInput = document.getElementById('taskInput');
 const stepButton = document.getElementById('stepButton');
 const sanitizeButton = document.getElementById('sanitizeButton');
 const clearButton = document.getElementById('clearButton');
+
+const runBanner = document.getElementById('runBanner');
+const runBannerText = document.getElementById('runBannerText');
+const resumeButton = document.getElementById('resumeButton');
+const allowButton = document.getElementById('allowButton');
 
 const canvas = document.getElementById('screenshotCanvas');
 const ctx = canvas.getContext('2d');
@@ -94,11 +100,30 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 });
 
 // 2. Server URL Persistence & Health Check
+
+// Sanitized frames and the masked task go to this URL. Plain http is accepted only for this machine or a
+// private network address (an on-prem server); anything else must use https.
+function serverUrlProblem(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return 'not a valid URL';
+  }
+  if (url.protocol === 'https:') return null;
+  if (url.protocol !== 'http:') return 'use an http(s) URL';
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  const local = host === 'localhost' || host === '::1' || /^127\./.test(host) || /^10\./.test(host) ||
+    /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  return local ? null : 'use https for a server outside this machine or your local network';
+}
+
 async function loadServerUrl() {
   try {
     const data = await chrome.storage.local.get(['privagServerUrl']);
-    if (data.privagServerUrl) {
-      serverUrl = data.privagServerUrl.trim().replace(/\/$/, '');
+    const saved = data.privagServerUrl?.trim().replace(/\/$/, '');
+    if (saved && !serverUrlProblem(saved)) {
+      serverUrl = saved;
       serverUrlInput.value = serverUrl;
     }
   } catch (e) {
@@ -110,6 +135,11 @@ async function loadServerUrl() {
 async function saveServerUrl() {
   const val = serverUrlInput.value.trim().replace(/\/$/, '');
   if (!val) return;
+  const problem = serverUrlProblem(val);
+  if (problem) {
+    log(`Server URL not saved: ${problem}.`, 'error');
+    return;
+  }
   serverUrl = val;
   try {
     await chrome.storage.local.set({ privagServerUrl: serverUrl });
@@ -160,6 +190,8 @@ function handleModelMessage(msg) {
     modelBadge.textContent = onGpu ? 'WebGPU: Ready' : 'WASM: Ready';
     modelBadge.className = onGpu ? 'badge badge-online' : 'badge badge-warning';
     log(`Florence-2 vision model loaded on ${onGpu ? 'WebGPU' : 'WASM (CPU fallback, slow)'}!`, onGpu ? 'success' : 'warning');
+    // A task paused only because the model was still loading carries on by itself
+    if (task && runState === 'paused' && pauseCode === 'MODEL_NOT_READY') resumeTask();
   } else if (msg.type === 'PROGRESS') {
     const p = msg.progress;
     // Use the aggregate over all model files; per-file events made the bar jump between files
@@ -192,120 +224,179 @@ async function syncModelStatus() {
   }
 }
 
-// 4. Capture & Sanitize Page (On-Device Dual-Pass)
-async function sanitizeActiveTab() {
-  log('Capturing viewport screenshot...', 'info');
-  await setupOffscreenDocument();
+// 4. Capture & Sanitize a Tab (On-Device Dual-Pass)
 
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!activeTab || !activeTab.id) {
-    throw new Error('No active browser tab found.');
-  }
+// How long the page must be free of DOM changes before it is scanned, and the most we wait for that
+const DOM_QUIET_MS = 300;
+const DOM_QUIET_MAX_MS = 3000;
+// Scan + capture attempts while the page keeps changing between the two
+const MAX_CAPTURE_ATTEMPTS = 3;
 
-  // Ensure content script is injected for DOM operations
+// Masking for DOM detections (user decision D1): secrets are black-boxed with nothing to type; card and ID
+// numbers are black-boxed with a placeholder the model may type; other values become look-alike fakes;
+// profile photos get a solid mask
+const SECRET_TYPES = new Set(['password', 'otp', 'cvv', 'card_meta', 'autofill']);
+const ID_TYPES = new Set(['card', 'aadhaar', 'pan']);
+
+const elapsed = (start) => Math.round(performance.now() - start);
+
+// Runs one of content.js's functions in the tab through chrome.scripting.executeScript
+async function runInTab(tabId, func, args = []) {
+  const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func, args });
+  return injection?.result;
+}
+
+// Fails closed: anything that keeps the DOM pass from running withholds the frame
+async function injectContentScript(tabId) {
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: activeTab.id },
-      files: ['pii-masker.js', 'content.js']
-    });
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['validators.js', 'content.js'] });
   } catch (e) {
-    console.warn('Content script already present or injected:', e);
+    throw new Error(`Frame withheld: the DOM pass cannot run on this page (${e.message})`);
   }
+}
 
-  // Pass 1: deterministic DOM scan, taken right before the capture so its boxes match the pixels.
-  // Without it (mediaRegions undefined) the vision pass falls back to checking the whole screenshot.
-  let domScan = { regions: [], elements: [], mediaRegions: undefined };
-  try {
-    domScan = (await chrome.tabs.sendMessage(activeTab.id, { action: 'SCAN_PII' })) || domScan;
-    log(`DOM scan: ${domScan.regions.length} PII regions, ${domScan.elements.length} interactive elements, ` +
-      `${domScan.mediaRegions?.length ?? 0} media regions in ${domScan.scanMs ?? 0}ms`, 'info');
-  } catch (e) {
-    log(`DOM scan unavailable on this page (${e.message}); the vision pass will check the whole screenshot`, 'warning');
-  }
+function maskPlan(region, vault) {
+  if (region.source === 'dom_media') return { method: 'solid_mask' };
+  if (SECRET_TYPES.has(region.type)) return { method: 'black_box' };
+  const origin = region.fieldId ? `field:${region.fieldId}` : 'page';
+  const value = vault.getFakeValue(region.text, region.type, origin);
+  return { method: ID_TYPES.has(region.type) ? 'black_box' : 'semantic_mock', value };
+}
 
-  const rawScreenshot = await chrome.tabs.captureVisibleTab(
-    activeTab.windowId,
-    { format: 'png' }
-  );
-
-  // Real text from the page stops here: each DOM region carries its vault fake instead, and PII in element
-  // names gets the same fakes, so the image and the manifest agree (names are cut only after masking)
-  const domRegions = domScan.regions.map(({ text, ...region }) => ({ ...region, fake: masker.getFakeValue(text, region.type) }));
-  const elements = domScan.elements.map((el) => ({ ...el, name: masker.maskText(el.name).slice(0, 80) }));
-
-  log('Running on-device redaction...', 'info');
-
+function sendToOffscreen(message) {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(
-      {
-        action: 'RUN_FLORENCE',
-        image: rawScreenshot,
-        domRegions,
-        mediaRegions: domScan.mediaRegions,
-        elements: elements.map(({ ref, bbox }) => ({ ref, bbox }))
-      },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          log(`Vision error: ${chrome.runtime.lastError.message}`, 'error');
-          return reject(new Error(chrome.runtime.lastError.message));
-        }
-
-        if (!response || !response.success) {
-          const err = response?.error || 'Worker redaction failed';
-          log(`Redaction failed: ${err}`, 'error');
-          return reject(new Error(err));
-        }
-
-        // Draw redacted image onto viewport canvas
-        const img = new Image();
-        img.onload = () => {
-          canvas.width = img.width;
-          canvas.height = img.height;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-
-          canvas.style.display = 'block';
-          canvasPlaceholder.style.display = 'none';
-
-          const count = response.manifest?.redacted_regions?.length || 0;
-          // 'skipped': no media on screen; 'cached': same pixels as an earlier step
-          const vision = response.visionMode === 'ran' ? `${response.latencyMs}ms` : response.visionMode;
-          visionLatencyEl.textContent = vision;
-          redactionCountEl.textContent = count;
-
-          const domCount = domScan.regions.length;
-          log(`Redaction complete: ${count} regions occluded (${domCount} DOM + ${count - domCount} vision; vision ${vision})`, 'success');
-          resolve({
-            redactedUrl: response.redactedUrl,
-            manifest: {
-              ...(response.manifest || { redacted_regions: [] }),
-              // The coordinate space of coordinates, for anything that has no ref
-              screenshot_dimensions: { width: img.width, height: img.height },
-              dom_structure: { elements }
-            },
-            tabId: activeTab.id
-          });
-        };
-        img.onerror = () => reject(new Error('Failed to load sanitized canvas preview'));
-        img.src = response.redactedUrl;
-      }
-    );
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+      else resolve(response);
+    });
   });
 }
 
-// 5. Autonomous ReAct agent: observe (sanitize) -> reason + act (server VLM) -> execute -> repeat until done
+// One sanitized frame of the tab: DOM pass, screenshot, vision pass on media only, canvas masking, manifest.
+// Real text from the page stops here; the frame and manifest only carry masks and the vault's fakes.
+async function sanitizeTab(tabId, vault) {
+  const timings = {};
+  log('Capturing viewport screenshot...', 'info');
+  await setupOffscreenDocument();
+  const tab = await chrome.tabs.get(tabId);
+  await injectContentScript(tabId);
+
+  // Let re-renders and animations finish, so the scan and the screenshot see the same page
+  let start = performance.now();
+  await runInTab(tabId, (quiet, max) => privagWaitForQuiet(quiet, max), [DOM_QUIET_MS, DOM_QUIET_MAX_MS]);
+  timings.settle = elapsed(start);
+
+  // Pass 1 right before the capture, so its boxes match the pixels. If the page changed between the scan and
+  // the capture (MutationObserver sequence), scan and capture again; a page that never holds still gets the
+  // regions of the scans before and after its last capture masked.
+  let scan;
+  let rawScreenshot;
+  let regions;
+  for (let attempt = 1; ; attempt++) {
+    timings.attempts = attempt;
+    start = performance.now();
+    scan = await runInTab(tabId, () => privagScan());
+    timings.dom = elapsed(start);
+    if (!scan) throw new Error('Frame withheld: the DOM scan returned nothing');
+
+    start = performance.now();
+    rawScreenshot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    timings.capture = elapsed(start);
+    // captureVisibleTab shoots whatever tab is active: if the user switched away meanwhile, the pixels belong
+    // to another tab and the scan's boxes do not apply
+    if (!(await chrome.tabs.get(tabId)).active || (task && pauseRequest)) throw new Error('Frame discarded: the tab changed during capture');
+
+    const seq = await runInTab(tabId, () => privagMutationSeq());
+    regions = scan.regions;
+    if (seq === scan.seq) break;
+    if (attempt >= MAX_CAPTURE_ATTEMPTS) {
+      const after = await runInTab(tabId, () => privagScan());
+      regions = [...scan.regions, ...after.regions];
+      scan = { ...scan, mediaRegions: [...scan.mediaRegions, ...after.mediaRegions] };
+      log('The page kept changing during capture; masked the regions of the scans before and after the screenshot.', 'warning');
+      break;
+    }
+  }
+  log(`DOM scan: ${regions.length} PII regions, ${scan.elements.length} interactive elements, ` +
+    `${scan.mediaRegions.length} media regions in ${scan.scanMs}ms`, 'info');
+
+  const domRegions = regions.map((region) => {
+    const plan = maskPlan(region, vault);
+    return { type: region.type, source: region.source, bbox: region.bbox, method: plan.method, ...(plan.value !== undefined && { value: plan.value }) };
+  });
+  const elements = scan.elements.map((el) => ({ ...el, role: el.role.slice(0, 40), name: vault.maskText(el.name, 'page').slice(0, 80) }));
+
+  log('Running on-device redaction...', 'info');
+  const response = await sendToOffscreen({
+    action: 'RUN_FLORENCE',
+    image: rawScreenshot,
+    domRegions,
+    mediaRegions: scan.mediaRegions,
+    elements: elements.map(({ ref, bbox }) => ({ ref, bbox })),
+  });
+  if (!response?.success) {
+    const err = new Error(`Frame withheld: ${response?.error || 'redaction failed'}`);
+    err.code = response?.code;
+    throw err;
+  }
+
+  const img = await new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to load sanitized canvas preview'));
+    image.src = response.redactedUrl;
+  });
+  const manifest = {
+    redacted_regions: response.manifest.redacted_regions,
+    // The coordinate space of coordinates, for anything that has no ref
+    screenshot_dimensions: { width: img.width, height: img.height },
+    dom_structure: { elements },
+  };
+  // Fail closed: a malformed manifest (or one carrying unexpected fields) is never sent
+  const problems = PrivagRedactionManifest.validate(manifest);
+  if (problems.length) throw new Error(`Frame withheld: invalid redaction manifest (${problems[0]})`);
+
+  // Draw redacted image onto viewport canvas
+  canvas.width = img.width;
+  canvas.height = img.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0);
+  canvas.style.display = 'block';
+  canvasPlaceholder.style.display = 'none';
+
+  const count = manifest.redacted_regions.length;
+  // 'skipped': no media on screen; 'cached': same pixels as an earlier step
+  const vision = response.visionMode === 'ran' ? `${response.latencyMs}ms` : response.visionMode;
+  visionLatencyEl.textContent = vision;
+  redactionCountEl.textContent = count;
+  log(`Redaction complete: ${count} regions masked (${domRegions.length} DOM + ${count - domRegions.length} vision; vision ${vision})`, 'success');
+
+  Object.assign(timings, { vision: response.latencyMs, visionMode: response.visionMode, device: response.device, mask: response.maskMs });
+  return { redactedUrl: response.redactedUrl, manifest, timings };
+}
+
+// 5. Autonomous ReAct agent: observe (sanitize) -> reason + act (server VLM) -> gate -> execute -> repeat.
+// A task is pinned to the tab it started on. Switching tabs, leaving the start site, a model still loading or
+// an error PAUSES it (the vault is kept); Resume continues. The task ends -- and the vault is cleared -- on
+// "done", Stop, Clear, a new task or when its tab is closed.
 const MAX_AGENT_STEPS = 15;
 const MAX_STALLED_STEPS = 3;
-let agentRunning = false;
-let stopRequested = false;
-let serverRequest = null; // AbortController of the in-flight server call, so Stop can cancel it
+let task = null;            // { goal, tabId, windowId, startUrl, step, stepsLeft, stalled }
+let runState = 'idle';      // 'idle' | 'running' | 'paused' | 'confirming'
+let pauseReason = '';
+let pauseCode = null;
+let pauseRequest = null;    // set by tab events while a step runs; the loop pauses at its next checkpoint
+let serverRequest = null;   // AbortController of the in-flight server call
+let userDecision = null;    // resolver while waiting for the user's click on a submit/pay action
+// Per-step stage timings in ms (capture, DOM, vision, mask, network, VLM, execute), read by bench/
+const stepTimings = window.__privagSteps = [];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function showDecision(action) {
   const verb = String(action.action || 'done').toUpperCase();
   if (action.thought) log(`Thought: ${action.thought}`, 'info');
-  log(`VLM decided: ${verb} on "${action.target || ''}"`, 'success');
+  log(`VLM decided: ${verb} on "${action.target || action.ref || ''}"`, 'success');
 
   actionVerbBadge.textContent = verb;
   actionVerbBadge.className = 'badge badge-online';
@@ -316,22 +407,19 @@ function showDecision(action) {
   actionValueEl.textContent = action.value || 'None';
 }
 
-// New run, new vault: fakes are numbered from 0001 again
-function resetMasking() {
-  masker = new PIIMasker();
-}
-
-// Resolves with content.js's outcome and never rejects: a failed action is an observation for the model
-function executeOnPage(tabId, action) {
-  return new Promise((resolve) => {
-    chrome.tabs.sendMessage(tabId, { action: 'EXECUTE_ACTION', data: action }, (res) => {
-      if (chrome.runtime.lastError) {
-        resolve({ success: false, message: `No response from page: ${chrome.runtime.lastError.message}` });
-      } else {
-        resolve({ success: Boolean(res?.success), message: res?.message || res?.error || 'No result reported' });
-      }
-    });
-  });
+// Only these fields of the server's action are used, so a reply cannot smuggle in flags (e.g. a fake
+// "confirmed": true) that the page-side code might trust
+function pickAction(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const action = { action: String(raw.action || '').toLowerCase() };
+  for (const key of ['thought', 'target', 'value', 'ref']) {
+    if (typeof raw[key] === 'string') action[key] = raw[key];
+  }
+  if (typeof raw.ref === 'number') action.ref = `e${raw.ref}`;
+  if (Array.isArray(raw.coordinates) && raw.coordinates.length === 2 && raw.coordinates.every(Number.isFinite)) {
+    action.coordinates = raw.coordinates;
+  }
+  return action;
 }
 
 // Lets click handlers, re-renders and smooth scrolling finish, then waits out any navigation the
@@ -345,123 +433,274 @@ async function waitForPageSettle(tabId) {
   }
 }
 
-// One ReAct turn. The action is recorded together with its result, which the model reads next turn.
-async function runAgentStep(goal, step) {
-  const { redactedUrl, manifest, tabId } = await sanitizeActiveTab();
-  if (stopRequested) return { stopped: true };
+// Whether the task's tab can be observed right now: it must be the active tab of its window and still on the
+// site the task started on
+async function taskTabUsable() {
+  const tab = await chrome.tabs.get(task.tabId).catch(() => null);
+  if (!tab) return { ok: false, reason: "the task's tab is gone" };
+  if (!tab.active) return { ok: false, reason: "switch back to the task's tab to continue" };
+  if (!PrivagGate.sameSite(tab.url, task.startUrl)) return { ok: false, reason: `the tab is no longer on ${PrivagGate.hostOf(task.startUrl)}` };
+  return { ok: true };
+}
 
-  log(`Step ${step}/${MAX_AGENT_STEPS}: dispatching sanitized perception to ${serverUrl}/api...`, 'info');
+function pauseTask(reason, code = null) {
+  runState = 'paused';
+  pauseReason = reason;
+  pauseCode = code;
+  log(`Task paused: ${reason}. The vault is kept; Resume to continue or Stop to end the task.`, 'warning');
+  setAgentUi();
+}
+
+// Converts a pause requested by a tab event into a pause; true when the step must not go on
+function checkPauseRequest() {
+  if (!task) return true;
+  if (!pauseRequest) return false;
+  const reason = pauseRequest;
+  pauseRequest = null;
+  pauseTask(reason);
+  return true;
+}
+
+function requestPause(reason) {
+  if (runState === 'running') {
+    pauseRequest = reason;
+    serverRequest?.abort();
+  } else if (runState === 'confirming') {
+    pauseRequest = reason;
+    userDecision?.('pause');
+  } else if (runState === 'paused') {
+    setAgentUi();
+  }
+}
+
+function endTask(message, type = 'info') {
+  if (!task) return;
+  serverRequest?.abort();
+  userDecision?.('stop');
+  task = null;
+  runState = 'idle';
+  pauseRequest = null;
+  pauseCode = null;
+  actionHistory = [];
+  masker.clear();
+  log(`${message} Task ended; the vault was cleared.`, type);
+  setAgentUi();
+}
+
+// Pauses until the user clicks Allow once (or Stop); the page is not touched before that
+function askUser(question) {
+  runState = 'confirming';
+  pauseReason = question;
+  log(`Waiting for your click: ${question}`, 'warning');
+  setAgentUi();
+  return new Promise((resolve) => {
+    userDecision = (decision) => {
+      userDecision = null;
+      resolve(decision);
+    };
+  });
+}
+
+// The local gate: the target is described by the page, the rules in action-gate.js decide, and a typed fake is
+// resolved to its real value only where the vault allows. Blocked actions are reported back to the model.
+async function gateAndExecute(tabId, action) {
+  const request = { action: action.action, ref: action.ref, coordinates: action.coordinates, target: action.target };
+  const needsTarget = action.action === 'click' || action.action === 'type';
+  const target = needsTarget ? await runInTab(tabId, (data) => privagDescribeTarget(data), [request]) : null;
+  let verdict = PrivagGate.check(action, target?.found ? target : null, { startUrl: task.startUrl });
+  if (needsTarget && !target?.found && target?.missing) verdict = { verdict: 'block', reason: target.missing };
+
+  let value = action.value;
+  if (verdict.verdict !== 'block' && action.action === 'type') {
+    const resolved = masker.resolve(action.value, target);
+    if (resolved.blocked.length) {
+      const types = [...new Set(resolved.blocked.map((b) => b.type))].join(', ');
+      verdict = { verdict: 'block', reason: `the ${types} value can only be typed into the field it came from or a field for that kind of value` };
+    } else {
+      value = resolved.text;
+    }
+  }
+
+  if (verdict.verdict === 'confirm') {
+    const decision = await askUser(`${action.action} "${target.label || action.target || action.ref || ''}" (${verdict.reason})`);
+    if (decision !== 'allow') return { paused: true };
+    runState = 'running';
+    setAgentUi();
+    log('Allowed by you once.', 'success');
+  }
+  if (verdict.verdict === 'block') {
+    log(`Gate blocked ${action.action}: ${verdict.reason}`, 'warning');
+    return { success: false, message: `Blocked on the device: ${verdict.reason}` };
+  }
+  const result = await runInTab(tabId, (data) => privagExecute(data), [{
+    ...request,
+    value,
+    ...(action.action === 'type' && { expectFieldId: target.fieldId }),
+  }]);
+  return result || { success: false, message: 'No result reported by the page' };
+}
+
+// One ReAct turn. The action is recorded together with its result, which the model reads next turn.
+async function runAgentStep() {
+  const tabId = task.tabId;
+  task.step++;
+  task.stepsLeft--;
+  const timing = { step: task.step };
+  const { redactedUrl, manifest, timings } = await sanitizeTab(tabId, masker);
+  Object.assign(timing, timings);
+  if (checkPauseRequest()) return { paused: true };
+
+  log(`Step ${task.step}: dispatching sanitized perception to ${serverUrl}/api...`, 'info');
   const startTime = performance.now();
   serverRequest = new AbortController();
   const response = await fetch(`${serverUrl}/api`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    // PII in the task itself (e.g. "type my PAN ...") is faked too; the vault restores it when typed
-    body: JSON.stringify({ image: redactedUrl, task: masker.maskText(goal), history: actionHistory, manifest }),
+    // PII in the task itself (e.g. "type my PAN ...") is faked too; the vault restores it where it belongs
+    body: JSON.stringify({ image: redactedUrl, task: masker.maskText(task.goal, 'task'), history: actionHistory, manifest }),
     signal: serverRequest.signal
   });
-  serverLatencyEl.textContent = `${Math.round(performance.now() - startTime)}ms`;
+  const payload = await response.json().catch(() => ({}));
+  const roundTrip = elapsed(startTime);
+  serverRequest = null;
+  serverLatencyEl.textContent = `${roundTrip}ms`;
+  if (!response.ok) throw new Error(payload.error || `Server returned HTTP ${response.status}`);
+  const vlm = Number.isFinite(payload.timing?.vlm_ms) ? payload.timing.vlm_ms : null;
+  Object.assign(timing, { server: roundTrip, vlm, network: vlm === null ? null : Math.max(0, roundTrip - vlm) });
+  // The user switched away while the model was thinking: this action is dropped, the step is redone on Resume
+  if (checkPauseRequest()) return { paused: true };
 
-  if (!response.ok) {
-    throw new Error(`Server returned HTTP ${response.status}`);
-  }
-  const payload = await response.json();
-  // The server could not reach the LLM; retrying the same request would not help
-  if (payload.error) {
-    throw new Error(payload.error);
-  }
-  const action = payload.action;
-  if (!action) {
-    throw new Error('Server returned empty action payload');
-  }
-
+  const action = pickAction(payload.action);
+  if (!action) throw new Error('Server returned empty action payload');
+  if (payload.invalid_reason) log(`The model's reply was not a valid action (${payload.invalid_reason}).`, 'warning');
   showDecision(action);
-  if (action.action === 'done' || stopRequested) {
-    return { action, stopped: stopRequested };
+  if (action.action === 'done') {
+    stepTimings.push(timing);
+    return { done: true };
   }
 
-  log(`Executing ${action.action} on active tab...`, 'info');
-  // Fakes the model typed become the real values only here, on the way into the page
-  const result = await executeOnPage(tabId, { ...action, value: masker.unmaskText(action.value) });
+  log(`Executing ${action.action} on the task's tab...`, 'info');
+  const executeStart = performance.now();
+  const result = await gateAndExecute(tabId, action);
+  timing.execute = elapsed(executeStart);
+  stepTimings.push(timing);
+  if (result.paused) {
+    checkPauseRequest();
+    return { paused: true };
+  }
   // Results can quote the page (e.g. a picked dropdown option), and the model's own fields could echo a real
   // value it was never shown: everything entering the history is masked
-  const entry = { ...action, result: masker.maskText(result.message) };
+  const entry = { ...action, result: masker.maskText(result.message, 'page') };
   for (const key of ['thought', 'target', 'value']) {
-    if (typeof entry[key] === 'string') entry[key] = masker.maskText(entry[key]);
+    if (typeof entry[key] === 'string') entry[key] = masker.maskText(entry[key], 'page');
   }
   log(`Page execution: ${entry.result}`, result.success ? 'success' : 'warning');
   actionHistory.push(JSON.stringify(entry));
-  return { action, result, tabId };
+  return { progress: result.success && action.action !== 'wait' };
 }
 
-async function runAgent() {
+async function runLoop() {
+  runState = 'running';
+  setAgentUi();
+  try {
+    while (task && runState === 'running') {
+      const usable = await taskTabUsable();
+      if (!usable.ok) return pauseTask(usable.reason);
+      if (task.stepsLeft <= 0) {
+        task.stepsLeft = MAX_AGENT_STEPS;
+        return pauseTask(`${MAX_AGENT_STEPS} steps without finishing; Resume allows ${MAX_AGENT_STEPS} more`);
+      }
+      actionVerbBadge.textContent = 'THINKING';
+      actionVerbBadge.className = 'badge badge-warning';
+
+      const outcome = await runAgentStep();
+      if (!task || outcome.paused) return;
+      if (outcome.done) return endTask(`Task complete after ${task.step} step(s).`, 'success');
+
+      // Waiting, failing or being blocked makes no progress; several in a row means the agent is stuck
+      task.stalled = outcome.progress ? 0 : task.stalled + 1;
+      if (task.stalled >= MAX_STALLED_STEPS) {
+        task.stalled = 0;
+        return pauseTask(`${MAX_STALLED_STEPS} steps in a row made no progress`);
+      }
+      await waitForPageSettle(task.tabId);
+      if (checkPauseRequest()) return;
+    }
+  } catch (err) {
+    if (!task || checkPauseRequest()) return;
+    if (err.name === 'AbortError') return pauseTask('the server request was cancelled');
+    if (err.code === 'MODEL_NOT_READY') return pauseTask('the vision model is still loading; the task resumes when it is ready', 'MODEL_NOT_READY');
+    actionVerbBadge.textContent = 'ERROR';
+    actionVerbBadge.className = 'badge badge-offline';
+    pauseTask(err.message);
+  } finally {
+    serverRequest = null;
+    setAgentUi();
+  }
+}
+
+async function startTask() {
   const goal = taskInput.value.trim();
   if (!goal) {
     log('Enter a task for the agent first.', 'warning');
     taskInput.focus();
     return;
   }
-
-  agentRunning = true;
-  stopRequested = false;
-  actionHistory = [];
-  setAgentUi(true);
-  resetMasking();
-  log(`Agent started: "${goal}"`, 'info');
-
-  let stalled = 0;
-  try {
-    for (let step = 1; step <= MAX_AGENT_STEPS; step++) {
-      actionVerbBadge.textContent = 'THINKING';
-      actionVerbBadge.className = 'badge badge-warning';
-
-      const { action, result, tabId, stopped } = await runAgentStep(goal, step);
-      if (stopped) {
-        log('Agent stopped by user.', 'warning');
-        return;
-      }
-      if (action.action === 'done') {
-        log(`Task complete after ${step} step(s).`, 'success');
-        return;
-      }
-
-      // Waiting or failing makes no progress; several in a row means the agent is stuck
-      stalled = (!result.success || action.action === 'wait') ? stalled + 1 : 0;
-      if (stalled >= MAX_STALLED_STEPS) {
-        log(`Agent stopped: ${stalled} steps in a row made no progress.`, 'error');
-        return;
-      }
-
-      await waitForPageSettle(tabId);
-      if (stopRequested) {
-        log('Agent stopped by user.', 'warning');
-        return;
-      }
-    }
-    log(`Agent stopped: reached the ${MAX_AGENT_STEPS}-step limit before the task was done.`, 'warning');
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      log('Agent stopped by user.', 'warning');
-    } else {
-      log(`Agent error: ${err.message}`, 'error');
-      actionVerbBadge.textContent = 'ERROR';
-      actionVerbBadge.className = 'badge badge-offline';
-    }
-  } finally {
-    agentRunning = false;
-    serverRequest = null;
-    setAgentUi(false);
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) {
+    log('No active browser tab found.', 'error');
+    return;
   }
+  masker.clear();
+  actionHistory = [];
+  stepTimings.length = 0;
+  task = { goal, tabId: tab.id, windowId: tab.windowId, startUrl: tab.url, step: 0, stepsLeft: MAX_AGENT_STEPS, stalled: 0 };
+  log(`Task started on ${PrivagGate.hostOf(tab.url) || 'this tab'}.`, 'info');
+  runLoop();
 }
 
-function setAgentUi(running) {
-  stepButton.innerHTML = running ? '<span class="btn-icon">■</span> Stop' : '<span class="btn-icon">⚡</span> Run Agent';
-  stepButton.className = running ? 'btn btn-danger' : 'btn btn-primary';
-  stepButton.disabled = false;
-  sanitizeButton.disabled = running;
-  clearButton.disabled = running;
-  taskInput.disabled = running;
+async function resumeTask() {
+  if (!task || runState !== 'paused') return;
+  const usable = await taskTabUsable();
+  if (!usable.ok) {
+    log(`Cannot resume yet: ${usable.reason}.`, 'warning');
+    return;
+  }
+  pauseRequest = null;
+  pauseCode = null;
+  log('Task resumed.', 'info');
+  runLoop();
 }
+
+function setAgentUi() {
+  const active = Boolean(task);
+  stepButton.innerHTML = active ? '<span class="btn-icon">■</span> Stop' : '<span class="btn-icon">⚡</span> Run Agent';
+  stepButton.className = active ? 'btn btn-danger' : 'btn btn-primary';
+  stepButton.disabled = false;
+  sanitizeButton.disabled = active;
+  taskInput.disabled = active;
+
+  const banner = runState === 'paused' || runState === 'confirming';
+  runBanner.hidden = !banner;
+  runBanner.className = `run-banner ${runState === 'confirming' ? 'run-banner-confirm' : ''}`;
+  runBannerText.textContent = runState === 'confirming' ? `Your click is needed: ${pauseReason}` : `Paused: ${pauseReason}`;
+  resumeButton.hidden = runState !== 'paused';
+  allowButton.hidden = runState !== 'confirming';
+}
+
+// Tab events: the task follows only its own tab
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (task && tabId === task.tabId) endTask("The task's tab was closed.", 'warning');
+});
+chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  if (!task || windowId !== task.windowId) return;
+  if (tabId !== task.tabId) requestPause('you switched to another tab');
+  else setAgentUi();
+});
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (!task || tabId !== task.tabId || !changeInfo.url) return;
+  if (!PrivagGate.sameSite(changeInfo.url, task.startUrl)) requestPause(`the tab left ${PrivagGate.hostOf(task.startUrl)}`);
+});
 
 // 6. Event Listeners
 settingsToggle.addEventListener('click', () => {
@@ -476,29 +715,36 @@ serverUrlInput.addEventListener('keydown', (e) => {
 });
 
 stepButton.addEventListener('click', () => {
-  if (!agentRunning) {
-    runAgent();
+  if (!task) {
+    startTask();
     return;
   }
-  // Stop: cancel the in-flight server call; otherwise the loop exits at its next checkpoint
-  stopRequested = true;
-  serverRequest?.abort();
-  stepButton.disabled = true;
-  log('Stopping agent after the current operation...', 'warning');
+  endTask('Stopped by you.', 'warning');
+});
+
+resumeButton.addEventListener('click', resumeTask);
+
+allowButton.addEventListener('click', () => {
+  userDecision?.('allow');
 });
 
 sanitizeButton.addEventListener('click', async () => {
   sanitizeButton.disabled = true;
   try {
-    await sanitizeActiveTab();
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error('No active browser tab found.');
+    // Outside a task the preview uses a throwaway vault
+    const { timings } = await sanitizeTab(tab.id, new PIIMasker());
+    window.__privagLastSanitize = timings;
   } catch (err) {
     log(`Sanitize error: ${err.message}`, 'error');
   } finally {
-    sanitizeButton.disabled = false;
+    sanitizeButton.disabled = Boolean(task);
   }
 });
 
 clearButton.addEventListener('click', () => {
+  if (task) endTask('Cleared by you.', 'info');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   canvas.style.display = 'none';
   canvasPlaceholder.style.display = 'flex';
@@ -511,9 +757,7 @@ clearButton.addEventListener('click', () => {
   visionLatencyEl.textContent = '—';
   serverLatencyEl.textContent = '—';
   redactionCountEl.textContent = '0';
-  actionHistory = [];
-  resetMasking();
-  log('Viewport and action history cleared.', 'info');
+  log('Viewport cleared.', 'info');
 });
 
 // Periodic server health check every 15s
@@ -522,4 +766,5 @@ setInterval(checkServerHealth, 15000);
 // Initialize on mount
 loadTheme();
 loadServerUrl();
+setAgentUi();
 setupOffscreenDocument().then(syncModelStatus);

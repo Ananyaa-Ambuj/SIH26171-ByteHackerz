@@ -56,7 +56,7 @@
     <section class="section card">
       <label for="taskInput" class="input-label">Agent Task / Goal</label>
       <textarea id="taskInput" class="textarea-input" rows="2" placeholder="e.g. Click the login button and proceed..."></textarea>
-      <p class="help-text">Aadhaar, PAN, phone, email and card numbers in the task are faked before sending. Wrap other secrets, like a password, as {{secret}}.</p>
+      <p class="help-text">Aadhaar, PAN, card, phone, email, UPI, IFSC and labelled OTPs in the task are replaced by placeholders before sending. Wrap other secrets as {{secret}} to keep them out of the request; typing passwords and OTPs is left to you.</p>
 
       <!-- Action Buttons -->
       <div class="btn-grid">
@@ -68,13 +68,22 @@
         </button>
         <button id="clearButton" class="btn btn-ghost">Clear</button>
       </div>
+
+      <!-- Pause / confirmation banner: the task waits here for the user -->
+      <div id="runBanner" class="run-banner" hidden>
+        <span id="runBannerText" class="run-banner-text"></span>
+        <div class="run-banner-actions">
+          <button id="resumeButton" class="btn btn-primary btn-sm" hidden>Resume</button>
+          <button id="allowButton" class="btn btn-primary btn-sm" hidden>Allow once</button>
+        </div>
+      </div>
     </section>
 
     <!-- Visual Perception Canvas Preview -->
     <section class="section card">
       <div class="card-header">
         <span class="card-title">Sanitized Perception (Client-Side)</span>
-        <span id="privacyStatus" class="tag tag-safe">100% Zero Leakage</span>
+        <span id="privacyStatus" class="tag tag-safe">Masked on-device</span>
       </div>
       <div class="canvas-wrapper">
         <canvas id="screenshotCanvas"></canvas>
@@ -126,6 +135,9 @@
     </section>
   </div>
 
+  <script src="validators.js"></script>
+  <script src="action-gate.js"></script>
+  <script src="redaction-manifest.js"></script>
   <script src="pii-masker.js"></script>
   <script src="sidepanel.js"></script>
 </body>

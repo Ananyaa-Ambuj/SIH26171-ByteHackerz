@@ -432,6 +432,40 @@ body {
   cursor: not-allowed;
 }
 
+/* Pause / confirmation banner under the task buttons */
+.run-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-warning);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.run-banner[hidden] {
+  display: none;
+}
+
+.run-banner-confirm {
+  border-color: var(--accent-danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.run-banner-text {
+  font-size: 11px;
+  color: var(--text-main);
+  line-height: 1.4;
+}
+
+.run-banner-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* Canvas Viewport */
 .canvas-wrapper {
   position: relative;
