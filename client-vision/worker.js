@@ -16,6 +16,8 @@ env.backends.onnx.wasm.wasmPaths = new URL('./', import.meta.url).href;
 let model = null;
 let processor = null;
 let tokenizer = null;
+// The device the loaded model runs on ('webgpu' or 'wasm'), reported with every result
+let device = null;
 
 async function loadModel() {
     const model_id = 'onnx-community/Florence-2-base-ft';
@@ -42,7 +44,8 @@ async function loadModel() {
         processor = await AutoProcessor.from_pretrained(model_id);
         tokenizer = await AutoTokenizer.from_pretrained(model_id);
 
-        self.postMessage({ type: 'MODEL_READY', device: 'webgpu' });
+        device = 'webgpu';
+        self.postMessage({ type: 'MODEL_READY', device });
     } catch (err) {
         self.postMessage({ type: 'STATUS', message: `WebGPU unavailable (${err.message}). Falling back to WASM...` });
 
@@ -57,7 +60,8 @@ async function loadModel() {
             processor = await AutoProcessor.from_pretrained(model_id);
             tokenizer = await AutoTokenizer.from_pretrained(model_id);
 
-            self.postMessage({ type: 'MODEL_READY', device: 'wasm' });
+            device = 'wasm';
+            self.postMessage({ type: 'MODEL_READY', device });
         } catch (wasmErr) {
             self.postMessage({ type: 'ERROR', error: `WASM fallback failed: ${wasmErr.message}` });
         }
@@ -71,6 +75,8 @@ async function detectPII(imageDataUrl) {
 
     const image = await RawImage.fromURL(imageDataUrl);
     const regions = [];
+    // Every OCR line that is not PII, box only: the caller can black-box all text where the DOM pass cannot read
+    const otherText = [];
 
     // Helper to normalize boxes (whether 4-point bbox or 8-point quad_box)
     function extractBox(box) {
@@ -85,6 +91,13 @@ async function detectPII(imageDataUrl) {
             return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
         }
         return { x: box[0], y: box[1], w: box[2] - box[0], h: box[3] - box[1] };
+    }
+
+    // Whole pixels, rounded outwards so no edge of a face or a glyph falls outside the box
+    function toIntBox(b) {
+        const x = Math.floor(b.x);
+        const y = Math.floor(b.y);
+        return { x, y, w: Math.ceil(b.x + b.w) - x, h: Math.ceil(b.y + b.h) - y };
     }
 
     // -----------------------------------------------------------------
@@ -111,20 +124,10 @@ async function detectPII(imageDataUrl) {
     }
 
     // Merge overlapping face-part boxes (eyes, head, person) into ONE clean box per person.
-    // Boxes that don't overlap stay separate, so two people far apart don't blur everything between them.
+    // Boxes that don't overlap stay separate, so two people far apart don't get one mask over everything between them.
+    // Faces get a solid mask, not a blur (decision D1).
     mergeOverlappingBoxes(rawFaces).forEach((face) => {
-        regions.push({
-            type: 'face',
-            source: 'florence_od',
-            method: 'gaussian_blur',
-            confidence: 0.95,
-            bbox: {
-                x: Math.round(face.x),
-                y: Math.round(face.y),
-                w: Math.round(face.w),
-                h: Math.round(face.h),
-            },
-        });
+        regions.push({ type: 'face', source: 'florence_od', method: 'solid_mask', bbox: toIntBox(face) });
     });
 
     // -----------------------------------------------------------------
@@ -142,28 +145,18 @@ async function detectPII(imageDataUrl) {
     // Never log ocrData: it holds every recognised line, PII included
     if (ocrData && ocrBoxes && ocrData.labels) {
         ocrData.labels.forEach((text, idx) => {
+            // Results carry boxes and types only, never the recognised text
+            const bbox = toIntBox(extractBox(ocrBoxes[idx]));
             const pii = classifyLine(text);
             if (pii) {
-                const b = extractBox(ocrBoxes[idx]);
-                regions.push({
-                    type: pii.type,
-                    types: [pii.type],
-                    source: 'florence_ocr',
-                    method: 'black_box',
-                    confidence: 0.85,
-                    text_snippet: text,
-                    bbox: {
-                        x: Math.round(b.x),
-                        y: Math.round(b.y),
-                        w: Math.round(b.w),
-                        h: Math.round(b.h),
-                    },
-                });
+                regions.push({ type: pii.type, source: 'florence_ocr', method: 'black_box', bbox });
+            } else {
+                otherText.push({ bbox });
             }
         });
     }
 
-    return regions;
+    return { regions, otherText };
 }
 
 // Worker Message Listener — Interface to Extension / Webpage
@@ -182,14 +175,16 @@ self.addEventListener('message', async (e) => {
     if (type === 'DETECT') {
         try {
             const startTime = performance.now();
-            const regions = await detectPII(imageDataUrl);
+            const { regions, otherText } = await detectPII(imageDataUrl);
             const elapsedMs = Math.round(performance.now() - startTime);
 
             self.postMessage({
                 type: 'RESULTS',
                 requestId,
-                regions,
                 latencyMs: elapsedMs,
+                device,
+                regions,
+                otherText,
             });
         } catch (err) {
             self.postMessage({ type: 'ERROR', requestId, error: err.message });
