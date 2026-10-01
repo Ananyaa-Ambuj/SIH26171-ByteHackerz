@@ -1,10 +1,16 @@
-from flask import render_template, Flask, request, jsonify
+from flask import render_template, Flask, request, jsonify, json
+from werkzeug.exceptions import HTTPException
 import ipaddress
 import llm
+import math
 import os
+import re
 import sys
 
 app = Flask(__name__)
+# A sanitized frame is a JPEG data URL; anything far larger is not a frame and would only be forwarded upstream
+MAX_BODY_BYTES = 16 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = MAX_BODY_BYTES
 
 # No CORS headers on purpose: the extension's side panel is an extension page with host permissions, which
 # Chrome exempts from CORS, while web pages in other origins must not be able to read any response.
@@ -42,15 +48,135 @@ def index():
     # The dashboard edits where every sanitized frame goes, so it is local-only like /api/config
     return local_only_error() or render_template('index.html')
 
+# Redaction manifest schema: a rule-for-rule port of extension/redaction-manifest.js (same keys, enums, limits
+# and messages). The side panel refuses to send a manifest that fails it; the server refuses to forward one.
+MANIFEST_METHODS = ('black_box', 'solid_mask', 'semantic_mock')
+MANIFEST_SOURCES = ('dom_text', 'dom_field', 'dom_media', 'florence_od', 'florence_ocr')
+REGION_KEYS = {'type', 'method', 'source', 'bbox', 'value'}
+ELEMENT_KEYS = {'ref', 'role', 'name', 'bbox', 'filled', 'redacted', 'disabled'}
+TOP_KEYS = {'redacted_regions', 'screenshot_dimensions', 'dom_structure'}
+
+def _is_num(v):
+    # bool is an int in Python but not a number in JavaScript; json.loads also accepts NaN and Infinity
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+def _is_int(v):
+    # Number.isInteger: 5.0 counts
+    return _is_num(v) and float(v).is_integer()
+
+def _is_short_string(v, max_len):
+    # Length in UTF-16 code units, as JavaScript counts it
+    return isinstance(v, str) and len(v.encode('utf-16-le', 'surrogatepass')) // 2 <= max_len
+
+def _check_bbox(b, where, errors):
+    if not isinstance(b, dict) or not all(_is_num(b.get(k)) for k in ('x', 'y', 'w', 'h')):
+        errors.append(f'{where}.bbox must be {{x, y, w, h}} numbers')
+    elif b['w'] <= 0 or b['h'] <= 0 or b['x'] < 0 or b['y'] < 0:
+        errors.append(f'{where}.bbox must have x, y >= 0 and w, h > 0')
+
+def _check_keys(obj, allowed, where, errors):
+    for key in obj:
+        if key not in allowed:
+            errors.append(f'{where} has unexpected key "{key}"')
+
+def validate_manifest(manifest):
+    """Returns a list of problems; an empty list means the manifest is valid."""
+    errors = []
+    if not isinstance(manifest, dict):
+        return ['manifest must be an object']
+    _check_keys(manifest, TOP_KEYS, 'manifest', errors)
+
+    regions = manifest.get('redacted_regions')
+    if not isinstance(regions, list):
+        errors.append('redacted_regions must be an array')
+    else:
+        for i, r in enumerate(regions):
+            where = f'redacted_regions[{i}]'
+            if not isinstance(r, dict):
+                errors.append(f'{where} must be an object')
+                continue
+            _check_keys(r, REGION_KEYS, where, errors)
+            if not _is_short_string(r.get('type'), 40) or not r.get('type'):
+                errors.append(f'{where}.type must be a non-empty string')
+            if r.get('method') not in MANIFEST_METHODS:
+                errors.append(f'{where}.method must be one of {", ".join(MANIFEST_METHODS)}')
+            if r.get('source') not in MANIFEST_SOURCES:
+                errors.append(f'{where}.source must be one of {", ".join(MANIFEST_SOURCES)}')
+            _check_bbox(r.get('bbox'), where, errors)
+            if 'value' in r and not _is_short_string(r['value'], 200):
+                errors.append(f'{where}.value must be a string')
+            if r.get('method') == 'semantic_mock' and not isinstance(r.get('value'), str):
+                errors.append(f'{where}: semantic_mock needs the value shown')
+            if r.get('method') == 'solid_mask' and 'value' in r:
+                errors.append(f'{where}: solid_mask carries no value')
+
+    dims = manifest.get('screenshot_dimensions')
+    if not isinstance(dims, dict) or not _is_int(dims.get('width')) or not _is_int(dims.get('height')) \
+            or dims['width'] <= 0 or dims['height'] <= 0:
+        errors.append('screenshot_dimensions must be {width, height} positive integers')
+
+    dom = manifest.get('dom_structure')
+    elements = dom.get('elements') if isinstance(dom, dict) else None
+    if not isinstance(elements, list):
+        errors.append('dom_structure.elements must be an array')
+    else:
+        for i, el in enumerate(elements):
+            where = f'dom_structure.elements[{i}]'
+            if not isinstance(el, dict):
+                errors.append(f'{where} must be an object')
+                continue
+            _check_keys(el, ELEMENT_KEYS, where, errors)
+            # fullmatch and [0-9]: Python's $ also matches before a trailing newline and \d matches non-ASCII digits
+            if not isinstance(el.get('ref'), str) or not re.fullmatch(r'e[0-9]+', el['ref']):
+                errors.append(f'{where}.ref must look like e1')
+            if not _is_short_string(el.get('role'), 40):
+                errors.append(f'{where}.role must be a string')
+            if not _is_short_string(el.get('name'), 80):
+                errors.append(f'{where}.name must be a string of at most 80 characters')
+            _check_bbox(el.get('bbox'), where, errors)
+            for flag in ('filled', 'redacted', 'disabled'):
+                if flag in el and not isinstance(el[flag], bool):
+                    errors.append(f'{where}.{flag} must be a boolean')
+    return errors
+
+MAX_TASK_CHARS = 4000
+MAX_HISTORY_ITEMS = 50
+MAX_HISTORY_ITEM_CHARS = 4000
+IMAGE_PREFIXES = ('data:image/png;base64,', 'data:image/jpeg;base64,')
+_BASE64 = re.compile(r'[A-Za-z0-9+/]+={0,2}')
+
+def step_request_error(data):
+    """Why a POST /api body cannot be forwarded to the LLM (an error body for a 400), or None if it can."""
+    if not isinstance(data, dict):
+        return {"error": "Request body must be a JSON object (Content-Type: application/json)"}
+    task = data.get("task")
+    if not isinstance(task, str) or not task.strip() or len(task) > MAX_TASK_CHARS:
+        return {"error": f"task must be a non-empty string of at most {MAX_TASK_CHARS} characters"}
+    image = data.get("image")
+    if not isinstance(image, str) or not image.startswith(IMAGE_PREFIXES) \
+            or not _BASE64.fullmatch(image.split(",", 1)[1]):
+        return {"error": "image must be a data:image/png;base64, or data:image/jpeg;base64, URL"}
+    history = data.get("history", [])
+    if not isinstance(history, list) or len(history) > MAX_HISTORY_ITEMS \
+            or not all(isinstance(h, str) and len(h) <= MAX_HISTORY_ITEM_CHARS for h in history):
+        return {"error": f"history must be a list of at most {MAX_HISTORY_ITEMS} strings of at most "
+                         f"{MAX_HISTORY_ITEM_CHARS} characters each"}
+    if "manifest" not in data:
+        return {"error": "manifest is required"}
+    problems = validate_manifest(data["manifest"])
+    if problems:
+        return {"error": "Invalid manifest", "details": problems[:20]}
+    return None
+
 @app.route('/api', methods=['POST'])
 @app.route('/api/step', methods=['POST'])
 def api():
-    data = request.get_json() or {}
-    image = data.get("image", "")
-    task = data.get("task", "")
-    history = data.get("history", [])
-    manifest = data.get("manifest", {})
-    response = llm.get_response(manifest, image, task, history)
+    data = request.get_json(silent=True)
+    error = step_request_error(data)
+    if error:
+        return jsonify(error), 400
+    # Only these four fields are forwarded; any other key in the body is ignored
+    response = llm.get_response(data["manifest"], data["image"], data["task"], data.get("history", []))
     return jsonify(response)
     
 @app.route('/api/status', methods=['GET', 'POST'])
@@ -107,6 +233,23 @@ def model_info():
     if is_local_request():
         info["endpoint"] = config["llm_url"]
     return jsonify(info)
+
+# JSON for every error (400, 404, 405, 415, ...) instead of Werkzeug's HTML pages; keeps headers such as Allow
+@app.errorhandler(HTTPException)
+def http_error(e):
+    response = e.get_response()
+    response.data = json.dumps({"error": f"{e.code} {e.name}"})
+    response.content_type = "application/json"
+    return response
+
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({"error": f"Request body is larger than {MAX_BODY_BYTES // (1024 * 1024)} MiB"}), 413
+
+# Unhandled exceptions: Flask has already logged the traceback to stderr; the client learns nothing internal
+@app.errorhandler(500)
+def internal_error(e):
+    return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == "__main__":
     # Loopback only and no debugger by default: debug mode shows source and paths on every error and offers a
