@@ -1,153 +1,130 @@
-# Privag AI — System Architecture Specification
+# Privag AI — System Architecture
 
 ## Overview
 
-Privag AI is architected to solve a foundational security vulnerability in autonomous web agents: **the exfiltration of sensitive screen data to cloud reasoning engines**.
-
-By decoupling visual perception into an **on-device privacy boundary** and an **external reasoning boundary**, sensitive tokens never traverse the network.
+A browser agent normally streams raw screenshots to a server-side model. Privag AI splits the agent in two: everything that sees raw pixels or raw text runs inside the browser extension, and the server only ever receives a masked frame, a redaction manifest, a masked task and a masked action history. The server plans one action per step; the extension checks it locally and executes it.
 
 ---
 
-## 1. System Boundary Design
+## 1. System boundary
 
 ```text
-  USER DEVICE (Zero-Knowledge Zone)              NETWORK         REASONING SERVER
- ┌──────────────────────────────────────────┐               ┌────────────────────────┐
- │                                          │               │                        │
- │  1. Content Script (DOM Scanner)         │               │  Model-Agnostic VLM    │
- │     └─ HTML attributes & field bounding  │               │  (Gemma / Qwen)        │
- │                                          │   HTTP POST   │                        │
- │  2. Offscreen Worker (Florence-2 WebGPU) │  ───────────► │  Input:                │
- │     └─ Visual faces & unstructured OCR   │   Sanitized   │   - Sanitized image    │
- │                                          │   Image +     │   - Redaction manifest │
- │  3. Native Canvas 2D Engine              │   Manifest    │   - User task string   │
- │     ├─ Look-alike fakes for DOM PII      │               │                        │
- │     ├─ Black box for text in images      │               │                        │
- │     └─ Gaussian blur for faces           │               │  Output:               │
- │                                          │   Action JSON │   - Action JSON        │
- │  4. Action Execution Engine              │  ◄─────────── │     (click/type/scroll)│
- │     └─ Dispatches synthetic click/events │               │                        │
- └──────────────────────────────────────────┘               └────────────────────────┘
+  USER DEVICE (browser extension)                                SERVER (Flask)
+ ┌───────────────────────────────────────────────────┐        ┌──────────────────────────┐
+ │ 1. captureVisibleTab()  raw PNG (never leaves)     │        │                          │
+ │ 2. Pass 1 DOM scan (content.js + validators.js)    │ masked │  Gemma 4 (vLLM / Ollama) │
+ │ 3. Pass 2 Florence-2 on media only (Web Worker)    │ frame, │  via an OpenAI-compatible│
+ │ 4. Pass 3 canvas masks (offscreen.js)              │ manif- │  endpoint                │
+ │      black_box | solid_mask | semantic_mock        │ est,   │                          │
+ │ 5. Manifest schema check, masked task + history ───┼──────► │  validates input, asks   │
+ │                                                    │        │  the VLM, validates the  │
+ │ 7. Local action gate + vault (action-gate.js,      │ ◄──────┼─ one JSON action         │
+ │    pii-masker.js), then executeScript()            │ action │                          │
+ └───────────────────────────────────────────────────┘        └──────────────────────────┘
 ```
 
----
-
-## 2. Component Breakdown
-
-### 2.1 Pass 1: The Deterministic DOM Scanner
-
-- **Execution Environment:** Injected Content Script (`content.js`).
-- **Runtime:** $<20\text{ms}$ execution latency, 0 MB GPU VRAM.
-- **Mechanism** (open and closed shadow DOM included):
-  1. **Visible page text:** Runs exact card, Aadhaar, mobile-number, PAN and email patterns (in that priority, so a card number is never split into an Aadhaar number) over every visible DOM text node and boxes each match with a `Range`, so PII rendered as HTML text never depends on OCR accuracy.
-  2. **Form fields:** Every non-empty field that is sensitive by purpose, or whose value matches a PII pattern:
-     - Passwords: `input[type="password"]`
-     - Emails: `type="email"`, `autocomplete="email"`, or "email" in the name / id / placeholder / aria-label
-     - Phone Numbers: `type="tel"`, `autocomplete="tel*"`, or "phone" / "mobile" in those attributes
-     - Government IDs: "aadhaar" in those attributes, or "PAN" as a whole word (so fields such as `company` are not caught)
-     - Banking Details: `autocomplete="cc-number"`; other `cc-*` fields (security code, expiry) are hidden like passwords
-  3. **Interactive elements:** Buttons, links, fields and ARIA widgets in the viewport (not covered by overlays) get refs `e1`, `e2`, … that the model targets instead of guessing pixel coordinates (`dom_structure.elements`). Names are faked with the same vault as the image; field values are never included.
-  4. **Visual media:** Images, video, canvases, frames and CSS background images in the viewport, the only places PII can appear outside DOM text, are reported so Pass 2 only looks there.
-- **Output:** Pixel boxes from `getClientRects()` / `getBoundingClientRect()`, scaled by `devicePixelRatio` into screenshot pixels. Every DOM detection becomes a `semantic_mock` region (`source: "dom_text"` / `"dom_field"`); its real text goes only as far as the side panel, which swaps it for the vault's fake.
-
-### 2.2 Pass 2: Florence-2 On-Device Vision Engine
-
-- **Execution Environment:** Chrome Extension Offscreen Document (`offscreen.html`) hosting a dedicated Web Worker (`worker.js`).
-- **Acceleration:** Native browser **WebGPU** execution provider via `@huggingface/transformers`.
-- **Scope:** Only the visual media reported by Pass 1, cut out of the screenshot onto a white canvas (DOM PII inside them whited out, as Pass 1 already fakes it). No media on screen means the pass is skipped; media identical to a recent step (same pixels, by SHA-256) reuses the cached result. Without a DOM scan (pages that block content scripts) the whole screenshot is analysed.
-- **Tasks Executed:**
-  1. `<OD>` (Object Detection): Detects human faces, portrait photos, and avatars.
-  2. `<OCR_WITH_REGION>`: Detects text rendered in pixels (e.g. text inside canvas banners, scanned identity documents, or non-input paragraphs) and extracts quadrilateral coordinates (`quad_boxes`).
-- **Post-Processing:**
-  - **NMS Face Merging:** Merges overlapping multi-token face boxes (eyes, nose, head, person) into a single unified bounding box.
-  - **Regex PII Filter:** Validates OCR tokens against Indian Aadhaar, PAN card, mobile numbers, and email patterns.
-  - **Label Context Rule:** An OCR line holding a PII label (Aadhaar, PAN, phone/mobile, email) plus a value-like token (3+ digits or an `@`) is redacted even when OCR garbled the value, e.g. `PAN Card: ABCDE123RF`. Bare labels such as "PAN Number" stay visible for the agent.
-
-### 2.3 Pass 3: The Canvas Redaction Engine
-
-- **Execution Environment:** HTML5 Canvas 2D Context.
-- **Safety Padding:** Automatically adds a $4\text{px}$ horizontal and $3\text{px}$ vertical padding to text bounding boxes to prevent character-edge leakage caused by subpixel antialiasing.
-- **Redaction Modes** (the region's own `method` always decides; DOM → fake, image → black box or blur):
-  - **`semantic_mock`** (all DOM detections): Draws a format-preserving, clearly synthetic fake over the real value, on the page's own background colour: Aadhaar `0000 0000 0001` (original spacing), PAN `ZZZZZ0001Z`, phone `90000 00001`, card `4111 1111 1111 0001`, email `user_0001@example.com`, passwords as a fixed `••••••••`. Fakes come from the side panel's vault (`pii-masker.js`): fixed-width numbering, the same fake for the same value all run.
-  - **`black_box`** (text PII inside images, from Florence OCR): Occludes it with solid black rectangles (`#000000`).
-  - **`gaussian_blur`** (faces, from Florence OD): Restricts canvas drawing to a clipped path (`ctx.clip()`) and applies `ctx.filter = 'blur(14px)'`.
-- **Draw Order:** Vision regions first, DOM fakes last, so no black box or blur can cover a fake value; Set-of-Marks ref tags go on top.
-- **Beyond the Image:** The same vault fakes PII in element names and in the user's task text (secrets without a recognisable format can be marked `{{…}}`), and fakes the model types are swapped back to the real values locally, right before execution. The action history sent back to the server only ever holds fakes.
+What never crosses: the raw screenshot, field values, page text, the real values behind placeholders, OCR text.
 
 ---
 
-## 3. The Redaction Manifest Protocol
+## 2. Components
 
-To ensure the upstream Vision-Language Model can reason about the page structure without hallucinating, the sanitized screenshot is accompanied by a structured metadata manifest:
+### 2.1 Pass 1: DOM scan (`extension/content.js`, `extension/validators.js`)
+
+Injected into the task's tab with `chrome.scripting.executeScript`; the side panel then calls its functions the same way.
+
+1. **Visible text.** Text nodes are grouped by their nearest block-level element and validated as one string, so a value split over inline elements (`<b>2345</b> 6789 0124`) is still found. Each match is boxed with a `Range` (one box per line).
+2. **Validators, not regexes.** A candidate pattern only proposes a span; the type's validator decides: Aadhaar (12 digits, first digit 2-9, Verhoeff check digit), card numbers (13-19 digits, Luhn), PAN (`AAAAA9999A` with a valid holder-type letter), Indian mobile numbers (optional `+91`/`0`, first digit 6-9), UPI IDs (`handle@psp`, no dot in the PSP part), IFSC (`AAAA0XXXXXX`), emails, and OTPs only when an OTP label precedes the digits. A number that fails its checksum is left alone.
+3. **Form fields by purpose.** Password inputs, `autocomplete` tokens (`one-time-code`, `cc-number`, `cc-csc`, other `cc-*`, `tel*`, `email`, `name`, …) and name/id/label hints (Aadhaar, PAN, UPI/VPA, IFSC, OTP, CVV, phone, email, full name) decide a field's type whatever its value. Passwords, OTPs, CVVs and other card fields are never read: the field is just blacked out. Fields the browser autofilled are masked even when the page cannot read their value yet, and a `<select>` is masked when the option it shows is PII.
+4. **Profile photos.** Images whose `alt`/class/id/src mention an avatar or profile photo get a solid mask without waiting for vision.
+5. **Media for Pass 2.** Images, video, canvas and CSS background images are reported for vision; iframes, frames, embeds and objects (including PDFs, which the browser shows inside an embed) are reported as *unscannable*, because the DOM pass cannot read inside them.
+6. **Interactive elements.** Buttons, links, fields and ARIA widgets in view get refs (`e1`, `e2`, …) that the model targets instead of guessing pixels. Their names go through the same vault as everything else.
+7. **MutationObserver.** A sequence number is bumped on every DOM mutation (open and closed shadow roots included), input, scroll and resize. Before a scan the side panel waits until the page has been quiet for a moment; after the screenshot it compares the sequence number with the one the scan saw. If the page changed in between, it scans and captures again; a page that never holds still gets the regions of the scans before *and* after its last screenshot masked.
+
+### 2.2 Pass 2: Florence-2 vision (`client-vision/worker.js` → `extension/florence-worker.bundle.js`)
+
+- Runs in a Web Worker hosted by the offscreen document, through Transformers.js and ONNX Runtime on WebGPU, with a WASM fallback (at load time, and again if a WebGPU inference fails).
+- Looks only at the media regions from Pass 1, cut out of the screenshot onto a white canvas. No media on screen means the pass is skipped; media whose pixels are unchanged since a recent step reuses the cached result.
+- `<OD>` finds people and faces (overlapping boxes merged); `<OCR_WITH_REGION>` reads text lines. A line is PII when it contains a value that passes a validator, or carries a PII label (Aadhaar, PAN, card, phone, email, UPI, IFSC, OTP) next to a value-looking token, which catches values OCR garbled. Inside unscannable media every OCR line is masked.
+
+### 2.3 Pass 3: canvas masks (`extension/offscreen.js`)
+
+| Method | Applied to | Drawn as |
+| :--- | :--- | :--- |
+| `black_box` | passwords, OTPs, CVV/card fields, card numbers, Aadhaar, PAN; text PII in images; every OCR line inside frames and embeds | solid `#000000`, padded 4 px / 3 px |
+| `solid_mask` | faces (Florence `<OD>`) and profile photos (DOM rule) | solid grey `#7f7f7f` (no blur) |
+| `semantic_mock` | emails, phone numbers, UPI IDs, IFSC codes, names | a format-preserving fake on the page's own background colour |
+
+Masks are drawn first and fakes last, then the Set-of-Marks ref tags. Black-boxed card and ID numbers still carry a placeholder in the manifest (`value`), so the model can type them without seeing them.
+
+### 2.4 The vault (`extension/pii-masker.js`)
+
+The side panel's in-memory map between real values and placeholders. Fakes are clearly synthetic: Aadhaar `0000 0000 0001` (real ones never start with 0), PAN `ZZZZZ0001Z` (Z is not a holder type), card `4111 1111 1111 0001`, phone `90000 00001`, email `user_0001@example.com`, UPI `user_0001@fakebank`, IFSC `ZZZZ0000001`, name `Test User 0001`. Every text that leaves the device goes through it: element names, the task (where `{{…}}` marks other secrets) and the action history.
+
+Each fake remembers where its real value came from. When the model types a fake, the real value is restored only **into the field it was read from**, or, for a value from the task or the page text, **into a field whose detected purpose matches its type** (a PAN into a PAN field). Anywhere else the action is blocked and the model is told why. The vault lives as long as the task.
+
+### 2.5 The action gate (`extension/action-gate.js`)
+
+Every action from the server is checked on the device against a description of its target element before anything touches the page:
+
+- typing into password, OTP or CVV fields is blocked (the user enters those);
+- a link or form submission to another site is blocked (same site = same host without `www.`, or a subdomain of the start host);
+- anything that submits a form or is labelled like a payment (`Pay`, `Place order`, `Submit`, `Confirm`, …) waits for the user's **Allow once** click in the side panel;
+- only the action fields the extension knows are used, so a reply cannot smuggle in flags.
+
+### 2.6 The agent loop (`extension/sidepanel.js`)
+
+"Run Agent" pins a task to the active tab and repeats: sanitize → POST `/api` → gate + vault → `chrome.scripting.executeScript` → wait for the page to settle.
+
+- **Pauses** (vault kept, Resume continues): switching to another tab, the tab leaving the start site, the vision model still loading (resumes by itself when ready), a server or LLM error, 3 steps in a row without progress, 15 steps without finishing.
+- **Ends** (vault cleared): the model answers `done`, Stop, Clear, a new task, or the task's tab is closed.
+
+### 2.7 Fail-closed rules
+
+A frame is **withheld** (nothing is sent) when the DOM pass cannot run on the page (browser-internal and store pages, injection errors), when vision is needed but the model is not loaded or fails or times out, when the active tab changes during capture, or when the manifest fails its schema check (`extension/redaction-manifest.js`). Florence-2 gives no calibrated confidence, so "low confidence" is handled structurally: text in regions the DOM pass cannot read is masked line by line, and labelled lines whose value OCR garbled are masked too.
+
+---
+
+## 3. Redaction manifest
+
+Sent with every frame and validated on both sides (allow-listed keys only):
 
 ```json
 {
-	"redacted_regions": [
-		{
-			"type": "aadhaar",
-			"method": "semantic_mock",
-			"source": "dom_text",
-			"value": "0000 0000 0001",
-			"bbox": { "x": 217, "y": 129, "w": 217, "h": 33 }
-		},
-		{
-			"type": "password",
-			"method": "semantic_mock",
-			"source": "dom_field",
-			"value": "••••••••",
-			"bbox": { "x": 40, "y": 373, "w": 212, "h": 27 }
-		},
-		{
-			"type": "pan",
-			"method": "black_box",
-			"source": "florence_ocr",
-			"bbox": { "x": 925, "y": 316, "w": 270, "h": 36 }
-		},
-		{
-			"type": "face",
-			"method": "gaussian_blur",
-			"source": "florence_od",
-			"bbox": { "x": 595, "y": 133, "w": 105, "h": 148 }
-		}
-	],
-	"screenshot_dimensions": { "width": 1580, "height": 1014 },
-	"dom_structure": {
-		"elements": [
-			{ "ref": "e1", "role": "textbox", "name": "Aadhaar Number", "filled": true, "redacted": true, "bbox": { "x": 40, "y": 373, "w": 212, "h": 27 } },
-			{ "ref": "e2", "role": "button", "name": "Submit", "bbox": { "x": 40, "y": 486, "w": 160, "h": 64 } }
-		]
-	}
+  "redacted_regions": [
+    { "type": "face", "method": "solid_mask", "source": "florence_od", "bbox": { "x": 390, "y": 402, "w": 241, "h": 300 } },
+    { "type": "profile_photo", "method": "solid_mask", "source": "dom_media", "bbox": { "x": 264, "y": 553, "w": 120, "h": 150 } },
+    { "type": "aadhaar", "method": "black_box", "source": "dom_text", "value": "0000 0000 0001", "bbox": { "x": 123, "y": 96, "w": 159, "h": 25 } },
+    { "type": "password", "method": "black_box", "source": "dom_field", "bbox": { "x": 278, "y": 256, "w": 244, "h": 35 } },
+    { "type": "upi", "method": "semantic_mock", "source": "dom_text", "value": "user_0001@fakebank", "bbox": { "x": 404, "y": 176, "w": 185, "h": 25 } },
+    { "type": "email", "method": "semantic_mock", "source": "dom_field", "value": "user_0002@example.com", "bbox": { "x": 28, "y": 305, "w": 244, "h": 35 } }
+  ],
+  "screenshot_dimensions": { "width": 1262, "height": 910 },
+  "dom_structure": {
+    "elements": [
+      { "ref": "e2", "role": "textbox", "name": "Password", "filled": true, "redacted": true, "bbox": { "x": 278, "y": 256, "w": 244, "h": 35 } },
+      { "ref": "e8", "role": "button", "name": "Pay now", "bbox": { "x": 28, "y": 728, "w": 97, "h": 35 } }
+    ]
+  }
 }
 ```
 
+(An excerpt of a manifest produced by the extension on a test page.)
+
+Methods: `black_box`, `solid_mask`, `semantic_mock`. Sources: `dom_text`, `dom_field`, `dom_media`, `florence_od`, `florence_ocr`.
+
 ---
 
-## 4. Upstream Server-Side VLM Interface
+## 4. Server
 
-The server acts as a stateless, model-agnostic controller. It translates the visual interface and manifest into the standard OpenAI Multimodal Chat Completion format:
+A Flask app (`server/app.py`) that validates the request (JSON object, masked task, data-URL image, history list, manifest schema), forwards it to an OpenAI-compatible endpoint serving Gemma 4 (default: Ollama `gemma4:31b-it-q4_K_M`; vLLM: `google/gemma-4-31B-it`), and validates the reply into exactly one action: `{"action": "click|type|scroll|wait|done", "ref", "target", "coordinates", "value", "thought"}`. The system prompt tells the model what each mask means and never to guess masked content. Endpoints, status codes and configuration are in [`API.md`](API.md).
 
-1. **System Prompt Grounding:** Informs the model that look-alike values (e.g. `ZZZZZ0001Z`), black boxes and blurred regions stand in for confidential user data. Look-alikes may be reused exactly as given (the extension restores the real value locally); redacted content must never be guessed.
-2. **Action Grammar:** Constrains the VLM's output to strict, parseable JSON actions, with a short reasoning trace first (ReAct):
-   ```json
-   {
-     "thought": "Brief reasoning about the page and why this action is next",
-     "action": "click" | "type" | "scroll" | "wait" | "done",
-     "ref": "e7",
-     "target": "Element description or button label",
-     "coordinates": [x, y],
-     "value": "Text to type (look-alikes as given), dropdown option, or scroll direction"
-   }
-   ```
-   `ref` (a Set-of-Marks tag drawn on the screenshot) is the exact way to target an element; `coordinates` are only a fallback for things without a ref.
-3. **Regex Extraction Fallback:** In the event that conversational models wrap their response in Markdown prose, the server executes regex boundary matching (`r'\{.*\}'`) to guarantee reliable JSON extraction.
+---
 
-## 5. The Agent Loop (Side Panel)
+## 5. Known limitations
 
-"Run Agent" repeats **observe → reason + act → execute** until the task is finished:
-
-1. **Observe:** Pass 1 + Pass 2 sanitize a fresh screenshot of the active tab; PII in the task text is faked with the same vault.
-2. **Reason + act:** The server returns one action with its `thought`.
-3. **Execute:** Look-alikes in the action's `value` are swapped back to the real values locally, then `content.js` performs it on the ref'd element. The outcome (e.g. `Clicked e7` or `Element e7 is no longer on the page`), masked like everything else, is appended to the history as the observation the model reads next turn.
-4. **Settle:** The loop waits for re-renders and any navigation to finish, then observes again.
-
-It stops on `"done"`, the Stop button, 15 steps, 3 consecutive steps without progress (failed or `wait` actions), or when the server reports that the LLM is unreachable. A failed redaction aborts the run, so nothing unsanitized is ever sent.
+- Names in free page text are not detected (on-device NER is planned); name *fields* are masked.
+- Text drawn by CSS (`::before`/`::after` content) is not read by the DOM pass.
+- Florence-2 sees each crop resized to its input size, so small text in a large image or frame can be missed by OCR; such text is then not masked.
+- The gate cannot see navigations started by page scripts; the loop notices them afterwards (the tab left the start site) and pauses.
+- Firefox: see the README's status table.
