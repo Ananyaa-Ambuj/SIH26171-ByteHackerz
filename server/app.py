@@ -1,5 +1,7 @@
 from flask import render_template, Flask, request, jsonify
 import llm
+import os
+import sys
 
 app = Flask(__name__)
 
@@ -77,4 +79,25 @@ def model_info():
     })
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, host='0.0.0.0')
+    # Loopback only and no debugger by default: debug mode shows source and paths on every error and offers a
+    # console, and 0.0.0.0 would hand both (and the API) to everyone on the network
+    host = os.environ.get("PRIVAG_HOST") or "127.0.0.1"
+    port_text = os.environ.get("PRIVAG_PORT") or "5000"
+    if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
+        sys.exit(f"PRIVAG_PORT must be a port number from 1 to 65535, got {port_text!r}")
+    port = int(port_text)
+    debug = os.environ.get("PRIVAG_DEBUG") == "1"
+
+    legacy_config = os.path.join(app.static_folder, "config.json")
+    if os.path.exists(legacy_config):
+        print(f"WARNING: {legacy_config} is served publicly at /static/config.json and is no longer read. "
+              "Delete it; save settings in the dashboard (server/config.json) instead.", file=sys.stderr)
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"WARNING: PRIVAG_HOST={host} makes the server reachable from other machines.", file=sys.stderr)
+    if debug:
+        print("WARNING: PRIVAG_DEBUG=1 turns on the Werkzeug debugger; never use it on a shared network.",
+              file=sys.stderr)
+
+    shown_host = f"[{host}]" if ":" in host else host
+    print(f"Privag AI server listening on http://{shown_host}:{port}", flush=True)
+    app.run(host=host, port=port, debug=debug)
