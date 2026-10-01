@@ -3,6 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:unit": "node --test \"unit/*.test.mjs\""
+    "test:unit": "node --test \"unit/*.test.mjs\"",
+    "test:privacy": "node --test \"privacy/*.test.mjs\"",
+    "bench": "node ../bench/bench.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "25.12.0"
   }
 }

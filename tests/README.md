@@ -37,3 +37,48 @@ The extension files are classic scripts that set a global (`globalThis.PrivagVal
 `PrivagRedactionManifest`, `PIIMasker`) and also export it when `module.exports` exists. The tests load them with
 `createRequire` from `node:module`. `pii-masker.js` reads `globalThis.PrivagValidators`, so its test loads
 `validators.js` first. Each test file runs in its own process, so globals do not leak between files.
+
+## Privacy end-to-end test (`privacy/privacy.test.mjs`)
+
+The core promise: no raw PII leaves the device. The test opens `privacy/fixture/index.html` (synthetic Aadhaar,
+PAN, card, mobile, email, OTP, UPI, IFSC and a face photo) in a real Chromium-based browser with the unpacked
+extension, runs one agent step through the real Flask server (backed by a local mock LLM that clicks "Next" and
+then answers "done"), and records the exact bytes of every request:
+
+- extension -> server, through a recording proxy in front of Flask, and
+- server -> LLM, as received by the mock.
+
+It fails if any of the PII strings (also in their digits-only forms) appears in any of them, if a manifest fails
+the schema, if an expected mask is missing (black boxes for Aadhaar, PAN, card and OTP; look-alikes for phone,
+email, UPI and IFSC; a solid mask on the face found by the on-device vision model), if the task text still holds
+the card number, or if a mask in the sent image is not solid. The captured requests, the sent image and the side
+panel's log are written to `privacy/out/` (git-ignored).
+
+```sh
+cd tests
+npm install            # puppeteer-core only: it drives an installed browser and downloads none
+npm run test:privacy
+```
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `BROWSER` | Chrome, Chromium, Edge or Brave executable | common install paths |
+| `PRIVAG_PYTHON` | Python with `server/requirements.txt` installed | `server/.venv`, then `python` |
+| `PROFILE_DIR` | browser profile to use; reuse one so the Florence-2 weights are downloaded only once | a new temp folder |
+| `MODEL_TIMEOUT_S` | how long to wait for the vision model to load | `1200` |
+
+The first run on a fresh profile downloads the Florence-2 weights from Hugging Face.
+
+### Fixture provenance
+
+All IDs on the fixture page are synthetic values chosen to pass their checksums (Verhoeff, Luhn) or structure
+checks; `4111 1111 1111 1111` is a published payment test card number and `example.com` is reserved for
+documentation. `privacy/fixture/face.jpg` is a downscaled copy of
+[File:Albert_Einstein_Head.jpg](https://commons.wikimedia.org/wiki/File:Albert_Einstein_Head.jpg) from Wikimedia
+Commons, which is in the public domain (published in the United States between 1931 and 1963 without a renewed
+copyright; author died in 1968).
+
+## Benchmark (`../bench/bench.mjs`)
+
+Not a test: it measures per-stage latency and peak memory over real agent steps and writes the raw results to
+`bench/results/`. See the main README for how it is run and what it reports.

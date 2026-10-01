@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Privag privacy fixture</title>
+  <!-- Every value below is a synthetic test value chosen to pass its checksum (see tests/README.md). -->
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 16px 28px; background: #fff; color: #111; }
+    .row { font-size: 22px; margin: 14px 0; }
+    input { font-size: 18px; padding: 5px; width: 240px; }
+    button { font-size: 18px; padding: 5px 12px; }
+    .photo { display: inline-block; vertical-align: top; margin-left: 24px; }
+  </style>
+</head>
+<body>
+  <h1>KYC review</h1>
+  <div class="row">Aadhaar: 2345 6789 0124 &nbsp; PAN: ABCPE1234F</div>
+  <div class="row">Card: 4111 1111 1111 1111 &nbsp; Mobile: 98765 43210</div>
+  <div class="row">Email: ravi.kumar@example.com &nbsp; UPI: ravi.kumar@okicici &nbsp; IFSC: SBIN0001234</div>
+  <div class="row">Your OTP is 482913</div>
+  <div class="row">
+    <input id="otp" autocomplete="one-time-code" value="482913" aria-label="One-time code">
+    <input id="email" type="email" value="ravi.kumar@example.com" aria-label="Email">
+  </div>
+  <div class="row">
+    <button id="next" onclick="window.nextClicks = (window.nextClicks || 0) + 1">Next</button>
+    <!-- No profile hint in alt/class/src: the face must be found by the on-device vision model -->
+    <img class="photo" id="photo" alt="Team photo" src="face.jpg" width="240" height="320">
+  </div>
+</body>
+</html>
