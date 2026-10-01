@@ -1,14 +1,153 @@
+var __create = Object.create;
 var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
   get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
 }) : x)(function(x) {
   if (typeof require !== "undefined") return require.apply(this, arguments);
   throw Error('Dynamic require of "' + x + '" is not supported');
 });
+var __commonJS = (cb, mod) => function __require2() {
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
+  }
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+
+// ../extension/validators.js
+var require_validators = __commonJS({
+  "../extension/validators.js"(exports, module) {
+    globalThis.PrivagValidators ??= (() => {
+      const D = [
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
+        [2, 3, 4, 0, 1, 7, 8, 9, 5, 6],
+        [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
+        [4, 0, 1, 2, 3, 9, 5, 6, 7, 8],
+        [5, 9, 8, 7, 6, 0, 4, 3, 2, 1],
+        [6, 5, 9, 8, 7, 1, 0, 4, 3, 2],
+        [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
+        [8, 7, 6, 5, 9, 3, 2, 1, 0, 4],
+        [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+      ];
+      const P = [
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
+        [5, 8, 0, 3, 7, 9, 6, 1, 4, 2],
+        [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+        [9, 4, 5, 3, 1, 2, 6, 8, 7, 0],
+        [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
+        [2, 7, 9, 3, 8, 0, 6, 4, 1, 5],
+        [7, 0, 4, 6, 9, 1, 3, 2, 5, 8]
+      ];
+      const digitsOf = (s) => String(s).replace(/\D/g, "");
+      function verhoeff(value) {
+        const d = digitsOf(value);
+        if (!d) return false;
+        let c = 0;
+        for (let i = 0; i < d.length; i++) c = D[c][P[i % 8][Number(d[d.length - 1 - i])]];
+        return c === 0;
+      }
+      function luhn(value) {
+        const d = digitsOf(value);
+        if (!d) return false;
+        let sum = 0;
+        for (let i = 0; i < d.length; i++) {
+          let n = Number(d[d.length - 1 - i]);
+          if (i % 2 === 1) {
+            n *= 2;
+            if (n > 9) n -= 9;
+          }
+          sum += n;
+        }
+        return sum % 10 === 0;
+      }
+      const isAadhaar = (s) => /^\d{4}[ -]?\d{4}[ -]?\d{4}$/.test(String(s).trim()) && /^[2-9]/.test(digitsOf(s)) && verhoeff(s);
+      const isCard = (s) => {
+        const d = digitsOf(s);
+        return /^\d(?:[ -]?\d){12,18}$/.test(String(s).trim()) && !/^(\d)\1+$/.test(d) && luhn(d);
+      };
+      const isPAN = (s) => /^[A-Z]{3}[ABCFGHLJPT][A-Z]\d{4}[A-Z]$/.test(String(s).trim());
+      const isPhone = (s) => {
+        const t = String(s).trim();
+        if (!/^(?:\+?91[ -]?|0)?[6-9](?:[ -]?\d){9}$/.test(t)) return false;
+        const d = digitsOf(t);
+        const national = d.length === 12 ? d.slice(2) : d.length === 11 ? d.slice(1) : d;
+        return national.length === 10 && /^[6-9]/.test(national);
+      };
+      const isUPI = (s) => /^[A-Za-z0-9][A-Za-z0-9._-]{1,255}@[A-Za-z][A-Za-z0-9]{1,63}$/.test(String(s).trim());
+      const isIFSC = (s) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(String(s).trim());
+      const isEmail = (s) => /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/.test(String(s).trim());
+      const isOTP = (s) => /^\d{4,8}$/.test(String(s).trim());
+      const VALIDATE = {
+        card: isCard,
+        aadhaar: isAadhaar,
+        phone: isPhone,
+        otp: isOTP,
+        pan: isPAN,
+        ifsc: isIFSC,
+        email: isEmail,
+        upi: isUPI
+      };
+      const CANDIDATES = {
+        card: /(?<![\w])(?<!\d[ -])\d(?:[ -]?\d){12,18}(?![ -]?\d)(?![\w])/g,
+        aadhaar: /(?<![\w])(?<!\d[ -])\d{4}[ -]?\d{4}[ -]?\d{4}(?![ -]?\d)(?![\w])/g,
+        phone: /(?<![\w+])(?<!\d[ -])(?:\+?91[ -]?|0)?[6-9](?:[ -]?\d){9}(?![ -]?\d)(?![\w])/g,
+        otp: /(?<=\b(?:otp|one[- ]?time[- ]?(?:password|passcode|code|pin)|verification[- ]code|passcode)\W{0,12}(?:is\W{1,4})?)\d{4,8}(?![\w])/gi,
+        pan: /(?<![A-Za-z0-9])[A-Z]{5}\d{4}[A-Z](?![A-Za-z0-9])/g,
+        ifsc: /(?<![A-Za-z0-9])[A-Z]{4}0[A-Z0-9]{6}(?![A-Za-z0-9])/g,
+        email: /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g,
+        upi: /(?<![\w.-])[A-Za-z0-9][A-Za-z0-9._-]{1,255}@[A-Za-z][A-Za-z0-9]{1,63}(?![\w@-])(?!\.[A-Za-z0-9])/g
+      };
+      const TYPES = Object.keys(CANDIDATES);
+      function find(text) {
+        const src = String(text ?? "");
+        const found = [];
+        for (const type of TYPES) {
+          for (const m of src.matchAll(CANDIDATES[type])) {
+            const start = m.index;
+            const end = start + m[0].length;
+            if (found.some((f) => start < f.end && f.start < end)) continue;
+            if (VALIDATE[type](m[0])) found.push({ type, start, end, value: m[0] });
+          }
+        }
+        return found.sort((a, b) => a.start - b.start);
+      }
+      function typeOf(value) {
+        const v = String(value ?? "").trim();
+        return TYPES.find((type) => type !== "otp" && VALIDATE[type](v)) || null;
+      }
+      return { verhoeff, luhn, isAadhaar, isCard, isPAN, isPhone, isUPI, isIFSC, isEmail, isOTP, validate: (type, s) => Boolean(VALIDATE[type]?.(s)), find, typeOf, TYPES };
+    })();
+    if (typeof module !== "undefined" && module.exports) {
+      module.exports = globalThis.PrivagValidators;
+    }
+  }
+});
 
 // node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs
 var ort_webgpu_bundle_min_exports = {};
@@ -6339,8 +6478,8 @@ var Sequence2 = class extends PreTokenizer_default {
    */
   pre_tokenize_text(text, options) {
     return this.tokenizers.reduce(
-      (pre_tokenized_text, tokenizer2) => {
-        return tokenizer2 ? tokenizer2.pre_tokenize(pre_tokenized_text, options) : pre_tokenized_text;
+      (pre_tokenized_text, tokenizer) => {
+        return tokenizer ? tokenizer.pre_tokenize(pre_tokenized_text, options) : pre_tokenized_text;
       },
       [text]
     );
@@ -7776,8 +7915,8 @@ function create_decoder(config) {
 }
 var create_decoder_default = create_decoder;
 var Tokenizer = class {
-  constructor(tokenizer2, config) {
-    const tokenizer_error = validate_object(tokenizer2, "Tokenizer", [
+  constructor(tokenizer, config) {
+    const tokenizer_error = validate_object(tokenizer, "Tokenizer", [
       "model",
       "decoder",
       "post_processor",
@@ -7791,7 +7930,7 @@ var Tokenizer = class {
     if (config_error) {
       throw new Error(config_error);
     }
-    this.tokenizer = tokenizer2;
+    this.tokenizer = tokenizer;
     this.config = config;
     this.normalizer = create_normalizer_default(this.tokenizer.normalizer);
     this.pre_tokenizer = create_pre_tokenizer_default(this.tokenizer.pre_tokenizer);
@@ -13314,18 +13453,18 @@ if (ORT_SYMBOL in globalThis) {
   defaultDevices = ["wasm"];
 }
 var InferenceSession2 = ONNX.InferenceSession;
-function deviceToExecutionProviders(device = null) {
-  if (!device) return defaultDevices;
-  switch (device) {
+function deviceToExecutionProviders(device2 = null) {
+  if (!device2) return defaultDevices;
+  switch (device2) {
     case "auto":
       return supportedDevices;
     case "gpu":
       return supportedDevices.filter((x) => ["webgpu", "cuda", "dml", "webnn-gpu"].includes(x));
   }
-  if (supportedDevices.includes(device)) {
-    return [DEVICE_TO_EXECUTION_PROVIDER_MAPPING[device] ?? device];
+  if (supportedDevices.includes(device2)) {
+    return [DEVICE_TO_EXECUTION_PROVIDER_MAPPING[device2] ?? device2];
   }
-  throw new Error(`Unsupported device: "${device}". Should be one of: ${supportedDevices.join(", ")}.`);
+  throw new Error(`Unsupported device: "${device2}". Should be one of: ${supportedDevices.join(", ")}.`);
 }
 var webInitChain = Promise.resolve();
 var wasmLoadPromise = null;
@@ -15921,9 +16060,9 @@ function getTokenFromConfig(config, ...keys) {
   }
   return null;
 }
-function getSpecialTokens(tokenizer2) {
+function getSpecialTokens(tokenizer) {
   const special = [];
-  for (const value of tokenizer2.get_added_tokens_decoder().values()) {
+  for (const value of tokenizer.get_added_tokens_decoder().values()) {
     if (value.special) special.push(value);
   }
   return special;
@@ -22193,12 +22332,12 @@ var Gemma4Processor = class extends Processor {
     this.eoi_token = eoi_token;
   }
   static async from_pretrained(pretrained_model_name_or_path, options = {}) {
-    const [config, tokenizer2, chat_template] = await Promise.all([
+    const [config, tokenizer, chat_template] = await Promise.all([
       getModelJSON(pretrained_model_name_or_path, PROCESSOR_NAME, true, options),
       AutoTokenizer.from_pretrained(pretrained_model_name_or_path, options),
       getModelText(pretrained_model_name_or_path, CHAT_TEMPLATE_NAME, false, options)
     ]);
-    const components = { tokenizer: tokenizer2 };
+    const components = { tokenizer };
     if (config.image_processor) {
       components.image_processor = new Gemma4ImageProcessor(config.image_processor);
     }
@@ -22554,13 +22693,13 @@ var VLChatProcessor = class extends Processor {
     } else if (!Array.isArray(images)) {
       images = [images];
     }
-    const tokenizer2 = this.tokenizer;
-    const result = tokenizer2.apply_chat_template(conversation, {
+    const tokenizer = this.tokenizer;
+    const result = tokenizer.apply_chat_template(conversation, {
       tokenize: false,
       add_generation_prompt: true,
       chat_template
     });
-    const encode = (text) => tokenizer2.encode(text, { add_special_tokens: false });
+    const encode = (text) => tokenizer.encode(text, { add_special_tokens: false });
     const parts = (
       /** @type {string} */
       result.split(this.image_tag)
@@ -22571,7 +22710,7 @@ var VLChatProcessor = class extends Processor {
         `Number of images provided (${images.length}) does not match number of "${this.image_tag}" image tags (${num_images})`
       );
     }
-    const [image_placeholder_tag_id, image_start_tag_id, image_end_tag_id] = tokenizer2.convert_tokens_to_ids([
+    const [image_placeholder_tag_id, image_start_tag_id, image_end_tag_id] = tokenizer.convert_tokens_to_ids([
       this.image_tag,
       this.image_start_tag,
       this.image_end_tag
@@ -25707,7 +25846,7 @@ var PreTrainedModel = class extends Callable {
     revision = "main",
     model_file_name = null,
     subfolder = "onnx",
-    device = null,
+    device: device2 = null,
     dtype = null,
     use_external_data_format = null,
     session_options = {}
@@ -25720,7 +25859,7 @@ var PreTrainedModel = class extends Callable {
       revision,
       model_file_name,
       subfolder,
-      device,
+      device: device2,
       dtype,
       use_external_data_format,
       session_options
@@ -25742,7 +25881,7 @@ var PreTrainedModel = class extends Callable {
         const expected_files = await get_model_files(pretrained_model_name_or_path, {
           config,
           dtype,
-          device,
+          device: device2,
           model_file_name
         });
         const metadata = await Promise.all(
@@ -32487,7 +32626,7 @@ var PretrainedMixin = class {
     revision = "main",
     model_file_name = null,
     subfolder = "onnx",
-    device = null,
+    device: device2 = null,
     dtype = null,
     use_external_data_format = null,
     session_options = {}
@@ -32500,7 +32639,7 @@ var PretrainedMixin = class {
       revision,
       model_file_name,
       subfolder,
-      device,
+      device: device2,
       dtype,
       use_external_data_format,
       session_options
@@ -32669,11 +32808,11 @@ var Pipeline = class extends Callable {
    * @param {PreTrainedTokenizer} [options.tokenizer=null] The tokenizer used by the pipeline (if any).
    * @param {Processor} [options.processor=null] The processor used by the pipeline (if any).
    */
-  constructor({ task, model: model2, tokenizer: tokenizer2 = null, processor: processor2 = null }) {
+  constructor({ task, model: model2, tokenizer = null, processor: processor2 = null }) {
     super();
     this.task = task;
     this.model = model2;
-    this.tokenizer = tokenizer2;
+    this.tokenizer = tokenizer;
     this.processor = processor2;
   }
   /** @type {DisposeType} */
@@ -32756,7 +32895,7 @@ function getTag(entity) {
   const p = entity[0];
   return entity[1] === "-" && (p === "B" || p === "I" || p === "E" || p === "S") ? [p, entity.slice(2)] : ["I", entity];
 }
-function groupEntities(tokens, ids, tokenizer2) {
+function groupEntities(tokens, ids, tokenizer) {
   const groups = [];
   let openTag = null;
   for (let i = 0; i < tokens.length; ++i) {
@@ -32780,7 +32919,7 @@ function groupEntities(tokens, ids, tokenizer2) {
     return {
       entity_group: tag,
       score: scoreSum / (end - start),
-      word: tokenizer2.decode(groupIds, { skip_special_tokens: true })
+      word: tokenizer.decode(groupIds, { skip_special_tokens: true })
     };
   });
 }
@@ -32911,23 +33050,23 @@ Pipeline {
         texts = texts.map((x) => task_specific_params[this.task].prefix + x);
       }
     }
-    const tokenizer2 = this.tokenizer;
+    const tokenizer = this.tokenizer;
     const tokenizer_options = {
       padding: true,
       truncation: true
     };
     let inputs;
-    if (this.task === "translation" && "_build_translation_inputs" in tokenizer2) {
-      inputs = tokenizer2._build_translation_inputs(texts, tokenizer_options, generate_kwargs);
+    if (this.task === "translation" && "_build_translation_inputs" in tokenizer) {
+      inputs = tokenizer._build_translation_inputs(texts, tokenizer_options, generate_kwargs);
     } else {
-      inputs = tokenizer2(texts, tokenizer_options);
+      inputs = tokenizer(texts, tokenizer_options);
     }
     const outputTokenIds = await this.model.generate({
       ...inputs,
       ...this._default_generation_config,
       ...generate_kwargs
     });
-    return tokenizer2.batch_decode(
+    return tokenizer.batch_decode(
       /** @type {Tensor} */
       outputTokenIds,
       {
@@ -34141,41 +34280,35 @@ var TASK_ALIASES = Object.freeze({
 var stdout_write = apis.IS_PROCESS_AVAILABLE ? (x) => process.stdout.write(x) : (x) => console.log(x);
 var CONCRETE_DTYPES = Object.keys(DEFAULT_DTYPE_SUFFIX_MAPPING);
 
-// worker.js
-env2.backends.onnx.wasm.wasmPaths = new URL("./", import.meta.url).href;
-var model = null;
-var processor = null;
-var tokenizer = null;
-var PII_PATTERNS = {
-  // Allows optional spaces/dashes between digits
-  aadhaar: /\d{4}[\s-]?\d{4}[\s-]?\d{4}/,
-  // PAN: 5 letters, 4 digits, 1 letter (case insensitive)
-  pan: /[A-Z]{5}[0-9O]{4}[A-Z]/i,
-  // Phone: 10 digits, optionally written as 5+5 (e.g. "98765 43210")
-  phone: /[6-9]\d{4}[\s-]?\d{5}/,
-  // Email
-  email: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
-};
-function matchPII(text) {
-  const matches = [];
-  for (const [type, regex] of Object.entries(PII_PATTERNS)) {
-    if (regex.test(text)) {
-      matches.push(type);
-    }
-  }
-  return matches.length > 0 ? matches : null;
-}
+// ocr-pii.js
+var import_validators = __toESM(require_validators(), 1);
 var PII_LABELS = {
   aadhaar: /aadha?ar|adhaa?r/i,
   pan: /\bPAN\b/,
+  // Also "credit card" and "debit card"
+  card: /\bcard\b/i,
   phone: /phone|mobile/i,
-  email: /e-?mail/i
+  email: /e-?mail/i,
+  upi: /\bUPI\b|\bVPA\b/i,
+  ifsc: /\bIFSC\b/i,
+  otp: /\bOTP\b|one[- ]?time[- ]?(?:password|passcode|code|pin)/i
 };
 function matchLabeledPII(text) {
-  const hasValue = (text.match(/[A-Za-z0-9@._-]{6,}/g) || []).some((token) => token.includes("@") || (token.match(/\d/g) || []).length >= 3);
+  const hasValue = (text.match(/[A-Za-z0-9@._-]{6,}/g) || []).some((token) => token.includes("@") || (token.match(/\d/g) || []).length >= 3) || (text.match(/\d/g) || []).length >= 6;
   if (!hasValue) return null;
-  const matches = Object.keys(PII_LABELS).filter((type) => PII_LABELS[type].test(text));
-  return matches.length > 0 ? matches : null;
+  let found = null;
+  for (const [type, label] of Object.entries(PII_LABELS)) {
+    const at2 = text.search(label);
+    if (at2 >= 0 && (found === null || at2 < found.at)) found = { type, at: at2 };
+  }
+  return found && found.type;
+}
+function classifyLine(text) {
+  const line = String(text ?? "");
+  const validated = globalThis.PrivagValidators.find(line);
+  if (validated.length > 0) return { type: validated[0].type };
+  const type = matchLabeledPII(line);
+  return type ? { type } : null;
 }
 function mergeOverlappingBoxes(boxes) {
   const merged = boxes.map((b) => ({ ...b }));
@@ -34198,52 +34331,108 @@ function mergeOverlappingBoxes(boxes) {
   }
   return merged;
 }
-async function loadModel() {
-  const model_id = "onnx-community/Florence-2-base-ft";
-  self.postMessage({ type: "STATUS", message: "Loading Florence-2 on WebGPU..." });
+
+// worker.js
+env2.backends.onnx.wasm.wasmPaths = new URL("./", import.meta.url).href;
+var MODEL_ID = "onnx-community/Florence-2-base-ft";
+var WEBGPU_DTYPE = {
+  embed_tokens: "fp16",
+  vision_encoder: "fp16",
+  encoder_model: "q4",
+  decoder_model_merged: "q4"
+};
+var model = null;
+var processor = null;
+var device = null;
+var loading = null;
+var webgpuFailed = false;
+var wasmSwitch = null;
+async function webgpuUnavailable() {
+  if (!navigator.gpu) return "no navigator.gpu";
   try {
-    model = await Florence2ForConditionalGeneration.from_pretrained(model_id, {
-      // Per-module precision recommended for Florence-2 on WebGPU (transformers.js dtypes guide):
-      // the encoders are sensitive to quantization; fp16/q4 keeps download and VRAM small
-      // (full fp32 is ~1 GB for base-ft and ~3.1 GB for large-ft, too much for a 4 GB GPU).
-      dtype: {
-        embed_tokens: "fp16",
-        vision_encoder: "fp16",
-        encoder_model: "q4",
-        decoder_model_merged: "q4"
-      },
-      device: "webgpu",
-      progress_callback: (progress) => {
-        self.postMessage({ type: "PROGRESS", progress });
-      }
-    });
-    processor = await AutoProcessor.from_pretrained(model_id);
-    tokenizer = await AutoTokenizer.from_pretrained(model_id);
-    self.postMessage({ type: "MODEL_READY", device: "webgpu" });
+    return await navigator.gpu.requestAdapter() ? null : "no WebGPU adapter";
   } catch (err) {
-    self.postMessage({ type: "STATUS", message: `WebGPU unavailable (${err.message}). Falling back to WASM...` });
-    try {
-      model = await Florence2ForConditionalGeneration.from_pretrained(model_id, {
-        dtype: "q4",
-        device: "wasm",
-        progress_callback: (progress) => {
-          self.postMessage({ type: "PROGRESS", progress });
-        }
-      });
-      processor = await AutoProcessor.from_pretrained(model_id);
-      tokenizer = await AutoTokenizer.from_pretrained(model_id);
-      self.postMessage({ type: "MODEL_READY", device: "wasm" });
-    } catch (wasmErr) {
-      self.postMessage({ type: "ERROR", error: `WASM fallback failed: ${wasmErr.message}` });
-    }
+    return `adapter request failed: ${err.message}`;
   }
 }
-async function detectPII(imageDataUrl) {
-  if (!model || !processor) {
+async function loadOn(dev) {
+  model = await Florence2ForConditionalGeneration.from_pretrained(MODEL_ID, {
+    dtype: dev === "webgpu" ? WEBGPU_DTYPE : "q4",
+    device: dev,
+    progress_callback: (progress) => {
+      self.postMessage({ type: "PROGRESS", progress });
+    }
+  });
+  device = dev;
+  self.postMessage({ type: "MODEL_READY", device });
+}
+async function loadModel() {
+  const missing = webgpuFailed ? "it failed during a detection" : await webgpuUnavailable();
+  self.postMessage({
+    type: "STATUS",
+    message: missing ? `WebGPU not available (${missing}). Loading Florence-2 on WASM...` : "Loading Florence-2 on WebGPU..."
+  });
+  processor ??= await AutoProcessor.from_pretrained(MODEL_ID);
+  if (!missing) {
+    try {
+      await loadOn("webgpu");
+      return;
+    } catch (err) {
+      self.postMessage({ type: "STATUS", message: `WebGPU load failed (${err.message}). Falling back to WASM...` });
+    }
+  }
+  try {
+    await loadOn("wasm");
+  } catch (err) {
+    throw new Error(`WASM load failed: ${err.message}`);
+  }
+}
+function startLoad(load) {
+  loading = load().then(() => true, (err) => {
+    self.postMessage({ type: "ERROR", error: err.message });
+    return false;
+  }).finally(() => {
+    loading = null;
+  });
+  return loading;
+}
+function switchToWasm(err) {
+  wasmSwitch ??= startLoad(async () => {
+    webgpuFailed = true;
+    self.postMessage({ type: "STATUS", message: `WebGPU failed during detection (${err.message}). Switching to WASM...` });
+    const gpuModel = model;
+    model = null;
+    device = null;
+    await gpuModel?.dispose().catch(() => {
+    });
+    try {
+      await loadOn("wasm");
+    } catch (wasmErr) {
+      throw new Error(`WASM load failed: ${wasmErr.message}`);
+    }
+  });
+  return wasmSwitch;
+}
+async function detect(imageDataUrl) {
+  const image = await RawImage.fromURL(imageDataUrl);
+  if (wasmSwitch) await wasmSwitch;
+  const usedDevice = device;
+  try {
+    return { device: usedDevice, ...await detectPII(model, image) };
+  } catch (err) {
+    if (usedDevice !== "webgpu") throw err;
+    if (!await switchToWasm(err)) {
+      throw new Error(`WebGPU failed during detection (${err.message}) and WASM could not be loaded`);
+    }
+    return { device, ...await detectPII(model, image) };
+  }
+}
+async function detectPII(m, image) {
+  if (!m || !processor) {
     throw new Error("Florence-2 model is not loaded yet");
   }
-  const image = await RawImage.fromURL(imageDataUrl);
   const regions = [];
+  const otherText = [];
   function extractBox(box) {
     if (!box) return { x: 0, y: 0, w: 0, h: 0 };
     if (box.length === 8) {
@@ -34257,10 +34446,15 @@ async function detectPII(imageDataUrl) {
     }
     return { x: box[0], y: box[1], w: box[2] - box[0], h: box[3] - box[1] };
   }
+  function toIntBox(b) {
+    const x = Math.floor(b.x);
+    const y = Math.floor(b.y);
+    return { x, y, w: Math.ceil(b.x + b.w) - x, h: Math.ceil(b.y + b.h) - y };
+  }
   const odTask = "<OD>";
   const odPrompts = processor.construct_prompts(odTask);
   const odInputs = await processor(image, odPrompts);
-  const odOutput = await model.generate({ ...odInputs, max_new_tokens: 256 });
+  const odOutput = await m.generate({ ...odInputs, max_new_tokens: 256 });
   const odText = processor.batch_decode(odOutput, { skip_special_tokens: false })[0];
   const odParsed = processor.post_process_generation(odText, odTask, image.size);
   const odData = odParsed[odTask] || odParsed;
@@ -34275,71 +34469,50 @@ async function detectPII(imageDataUrl) {
     });
   }
   mergeOverlappingBoxes(rawFaces).forEach((face) => {
-    regions.push({
-      type: "face",
-      source: "florence_od",
-      method: "gaussian_blur",
-      confidence: 0.95,
-      bbox: {
-        x: Math.round(face.x),
-        y: Math.round(face.y),
-        w: Math.round(face.w),
-        h: Math.round(face.h)
-      }
-    });
+    regions.push({ type: "face", source: "florence_od", method: "solid_mask", bbox: toIntBox(face) });
   });
   const ocrTask = "<OCR_WITH_REGION>";
   const ocrPrompts = processor.construct_prompts(ocrTask);
   const ocrInputs = await processor(image, ocrPrompts);
-  const ocrOutput = await model.generate({ ...ocrInputs, max_new_tokens: 512 });
+  const ocrOutput = await m.generate({ ...ocrInputs, max_new_tokens: 512 });
   const ocrText = processor.batch_decode(ocrOutput, { skip_special_tokens: false })[0];
   const ocrParsed = processor.post_process_generation(ocrText, ocrTask, image.size);
   const ocrData = ocrParsed[ocrTask] || ocrParsed;
   const ocrBoxes = ocrData?.quad_boxes || ocrData?.bboxes;
-  console.log("[Florence OCR Raw Output]:", ocrData);
   if (ocrData && ocrBoxes && ocrData.labels) {
     ocrData.labels.forEach((text, idx) => {
-      const piiTypes = matchPII(text) || matchLabeledPII(text);
-      if (piiTypes) {
-        const b = extractBox(ocrBoxes[idx]);
-        regions.push({
-          type: piiTypes.join(", "),
-          types: piiTypes,
-          source: "florence_ocr",
-          method: "black_box",
-          confidence: 0.85,
-          text_snippet: text,
-          bbox: {
-            x: Math.round(b.x),
-            y: Math.round(b.y),
-            w: Math.round(b.w),
-            h: Math.round(b.h)
-          }
-        });
+      const bbox = toIntBox(extractBox(ocrBoxes[idx]));
+      const pii = classifyLine(text);
+      if (pii) {
+        regions.push({ type: pii.type, source: "florence_ocr", method: "black_box", bbox });
+      } else {
+        otherText.push({ bbox });
       }
     });
   }
-  return regions;
+  return { regions, otherText };
 }
 self.addEventListener("message", async (e) => {
   const { type, imageDataUrl, requestId } = e.data;
   if (type === "LOAD_MODEL") {
-    try {
-      await loadModel();
-    } catch (err) {
-      self.postMessage({ type: "ERROR", error: err.message });
+    if (model) {
+      self.postMessage({ type: "MODEL_READY", device });
+    } else if (!loading) {
+      startLoad(loadModel);
     }
   }
   if (type === "DETECT") {
     try {
       const startTime = performance.now();
-      const regions = await detectPII(imageDataUrl);
+      const { device: usedDevice, regions, otherText } = await detect(imageDataUrl);
       const elapsedMs = Math.round(performance.now() - startTime);
       self.postMessage({
         type: "RESULTS",
         requestId,
+        latencyMs: elapsedMs,
+        device: usedDevice,
         regions,
-        latencyMs: elapsedMs
+        otherText
       });
     } catch (err) {
       self.postMessage({ type: "ERROR", requestId, error: err.message });
