@@ -1,27 +1,50 @@
 from flask import render_template, Flask, request, jsonify
+import ipaddress
 import llm
 import os
 import sys
 
 app = Flask(__name__)
 
-# Handle CORS
-@app.after_request
-def add_cors_headers(response):
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = '*'
-    return response
+# No CORS headers on purpose: the extension's side panel is an extension page with host permissions, which
+# Chrome exempts from CORS, while web pages in other origins must not be able to read any response.
+
+LOCAL_HOSTNAMES = ("localhost", "127.0.0.1", "::1")
+
+def _hostname(host):
+    # "localhost:5000" -> "localhost", "[::1]:5000" -> "::1"
+    if host.startswith("["):
+        return host[1:host.find("]")].lower()
+    return host.rsplit(":", 1)[0].lower() if host.count(":") == 1 else host.lower()
+
+def is_local_request():
+    """True only for a client on this machine that addresses the server by a loopback name. The Host check
+    stops DNS rebinding (a web page whose own domain resolves to 127.0.0.1); the Origin check stops a page
+    from another origin posting here."""
+    try:
+        ip = ipaddress.ip_address(request.remote_addr or "")
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if not ip.is_loopback or _hostname(request.host) not in LOCAL_HOSTNAMES:
+        return False
+    origin = request.headers.get("Origin")
+    return origin is None or origin.lower() == f"{request.scheme}://{request.host}".lower()
+
+def local_only_error():
+    if not is_local_request():
+        return jsonify({"error": "Only available from this machine, at http://localhost:<port>/"}), 403
+    return None
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # The dashboard edits where every sanitized frame goes, so it is local-only like /api/config
+    return local_only_error() or render_template('index.html')
 
-@app.route('/api', methods=['POST', 'OPTIONS'])
-@app.route('/api/step', methods=['POST', 'OPTIONS'])
+@app.route('/api', methods=['POST'])
+@app.route('/api/step', methods=['POST'])
 def api():
-    if request.method == 'OPTIONS':
-        return jsonify({"status": "ok"})
     data = request.get_json() or {}
     image = data.get("image", "")
     task = data.get("task", "")
@@ -49,6 +72,10 @@ def public_config():
 
 @app.route('/api/config', methods=['GET', 'POST'])
 def config():
+    # Whoever can write this decides where the frames, task and API key go
+    denied = local_only_error()
+    if denied:
+        return denied
     if request.method == 'POST':
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
@@ -71,12 +98,15 @@ def config():
 @app.route('/model/info', methods=['GET'])
 def model_info():
     config = llm.load_config()
-    return jsonify({
-        "model": config.get("llm_model"),
-        "endpoint": config.get("llm_url"),
+    info = {
+        "model": config["llm_model"],
         "type": "Vision-Language Model (OpenAI Compatible)",
         "swappable": True
-    })
+    }
+    # The endpoint can be an internal address: only shown on this machine
+    if is_local_request():
+        info["endpoint"] = config["llm_url"]
+    return jsonify(info)
 
 if __name__ == "__main__":
     # Loopback only and no debugger by default: debug mode shows source and paths on every error and offers a
