@@ -277,4 +277,6 @@ if __name__ == "__main__":
 
     shown_host = f"[{host}]" if ":" in host else host
     print(f"Privag AI server listening on http://{shown_host}:{port}", flush=True)
-    app.run(host=host, port=port, debug=debug)
+    # load_dotenv=False: settings come only from the process environment (see .env.example), even when
+    # python-dotenv happens to be installed
+    app.run(host=host, port=port, debug=debug, load_dotenv=False)
