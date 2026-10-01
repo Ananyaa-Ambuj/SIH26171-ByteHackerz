@@ -5,6 +5,7 @@ import {
     AutoTokenizer,
     RawImage,
 } from '@huggingface/transformers';
+import { classifyLine, mergeOverlappingBoxes } from './ocr-pii.js';
 
 // Load ONNX Runtime's WebGPU/WASM runtime from the files copied next to this bundle by
 // copy-ort-runtime.mjs. By default transformers.js imports it from the jsdelivr CDN through a
@@ -15,71 +16,6 @@ env.backends.onnx.wasm.wasmPaths = new URL('./', import.meta.url).href;
 let model = null;
 let processor = null;
 let tokenizer = null;
-
-// Regex patterns for text PII
-const PII_PATTERNS = {
-    // Allows optional spaces/dashes between digits
-    aadhaar: /\d{4}[\s-]?\d{4}[\s-]?\d{4}/,
-    // PAN: 5 letters, 4 digits, 1 letter (case insensitive)
-    pan: /[A-Z]{5}[0-9O]{4}[A-Z]/i,
-    // Phone: 10 digits, optionally written as 5+5 (e.g. "98765 43210")
-    phone: /[6-9]\d{4}[\s-]?\d{5}/,
-    // Email
-    email: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
-};
-
-function matchPII(text) {
-    const matches = [];
-    for (const [type, regex] of Object.entries(PII_PATTERNS)) {
-        if (regex.test(text)) {
-            matches.push(type);
-        }
-    }
-    return matches.length > 0 ? matches : null;
-}
-
-// Labels that mark an OCR line as PII even when OCR garbles the value itself, e.g. "PAN Card: ABCDE123RF"
-// (a 4 misread as R) or "Aadhaar No: 9876432 1098" (a dropped digit) slip past the strict patterns above
-const PII_LABELS = {
-    aadhaar: /aadha?ar|adhaa?r/i,
-    pan: /\bPAN\b/,
-    phone: /phone|mobile/i,
-    email: /e-?mail/i,
-};
-
-function matchLabeledPII(text) {
-    // Only when the line also holds a value-looking token (3+ digits, or an '@'), so bare field
-    // labels such as "PAN Number" stay readable for the agent
-    const hasValue = (text.match(/[A-Za-z0-9@._-]{6,}/g) || [])
-        .some((token) => token.includes('@') || (token.match(/\d/g) || []).length >= 3);
-    if (!hasValue) return null;
-    const matches = Object.keys(PII_LABELS).filter((type) => PII_LABELS[type].test(text));
-    return matches.length > 0 ? matches : null;
-}
-
-// Repeatedly replaces any two intersecting {x, y, w, h} boxes with their bounding union until none intersect
-function mergeOverlappingBoxes(boxes) {
-    const merged = boxes.map((b) => ({ ...b }));
-    let changed = true;
-    while (changed) {
-        changed = false;
-        // Rescan from the start after every merge: the grown union can reach boxes already checked
-        for (let i = 0; i < merged.length && !changed; i++) {
-            for (let j = i + 1; j < merged.length && !changed; j++) {
-                const a = merged[i];
-                const b = merged[j];
-                if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) {
-                    const x = Math.min(a.x, b.x);
-                    const y = Math.min(a.y, b.y);
-                    merged[i] = { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
-                    merged.splice(j, 1);
-                    changed = true;
-                }
-            }
-        }
-    }
-    return merged;
-}
 
 async function loadModel() {
     const model_id = 'onnx-community/Florence-2-base-ft';
@@ -206,12 +142,12 @@ async function detectPII(imageDataUrl) {
     // Never log ocrData: it holds every recognised line, PII included
     if (ocrData && ocrBoxes && ocrData.labels) {
         ocrData.labels.forEach((text, idx) => {
-            const piiTypes = matchPII(text) || matchLabeledPII(text);
-            if (piiTypes) {
+            const pii = classifyLine(text);
+            if (pii) {
                 const b = extractBox(ocrBoxes[idx]);
                 regions.push({
-                    type: piiTypes.join(', '),
-                    types: piiTypes,
+                    type: pii.type,
+                    types: [pii.type],
                     source: 'florence_ocr',
                     method: 'black_box',
                     confidence: 0.85,
