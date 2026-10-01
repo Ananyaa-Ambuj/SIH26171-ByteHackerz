@@ -54,7 +54,9 @@ globalThis.PIIMasker ??= class PIIMasker {
     const real = String(realValue);
     const digits = real.replace(/\D/g, '');
     const numeric = PIIMasker.NUMERIC.has(type);
-    const key = `${type}:${numeric ? digits : real}`;
+    // One value, one fake: a mobile number with or without +91 / 0, a PAN in any letter case
+    const normal = type === 'phone' ? digits.slice(-10) : type === 'pan' ? real.toUpperCase() : numeric ? digits : real;
+    const key = `${type}:${normal}`;
 
     let canonical = this.vault.get(key);
     if (!canonical) {
@@ -110,6 +112,10 @@ globalThis.PIIMasker ??= class PIIMasker {
     for (const f of PrivagValidators.find(src)) {
       claim(f.start, f.end, () => this.getFakeValue(f.value, f.type, origin));
     }
+    // People type their PAN in lowercase too; pages show it in capitals, so only outgoing text gets this pass
+    find(/(?<![A-Za-z0-9])[A-Za-z]{5}\d{4}[A-Za-z](?![A-Za-z0-9])/g, (m) => {
+      if (PrivagValidators.isPAN(m[0].toUpperCase())) claim(m.index, m.index + m[0].length, () => this.getFakeValue(m[0], 'pan', origin));
+    });
 
     claims.sort((a, b) => a[0] - b[0]);
     let out = '';

@@ -79,6 +79,23 @@ describe('maskText (outgoing text)', () => {
     assert.ok(!out.includes('hunter22'), out);
   });
 
+  test('one mobile number written three ways gets one fake, so the model sees one number, not three', () => {
+    const m = new PIIMasker();
+    const out = m.maskText('9876543210 / +91 98765 43210 / 09876543210', 'task');
+    const fakes = out.split(' / ').map((f) => f.replace(/\D/g, '').slice(-10));
+    assert.equal(new Set(fakes).size, 1, out);
+    assert.ok(!out.includes('98765'), out);
+  });
+
+  test('a PAN typed in lowercase in the task is masked too, with the same fake as its capital form', () => {
+    const m = new PIIMasker();
+    const out = m.maskText('my PAN is abcpe1234f, again ABCPE1234F', 'task');
+    assert.ok(!/abcpe1234f/i.test(out), out);
+    assert.match(out, /^my PAN is (ZZZZZ\d{4}Z), again \1$/);
+    // A lowercase word that only looks like a PAN (4th letter not a holder type) stays readable
+    assert.equal(m.maskText('code order1234x', 'task'), 'code order1234x');
+  });
+
   test('a 1-3 character vault value is not rewritten elsewhere (regression: a short {{a}} rewrote every later string)', () => {
     const m = new PIIMasker();
     assert.match(m.maskText('Initials {{a}}, code {{ab7}}', 'task'), /^Initials SECRET_\d{4}, code SECRET_\d{4}$/);
