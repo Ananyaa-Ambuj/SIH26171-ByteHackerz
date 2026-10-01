@@ -8,21 +8,25 @@ globalThis.PrivagRedactionManifest ??= (() => {
   const REGION_KEYS = new Set(['type', 'method', 'source', 'bbox', 'value']);
   const ELEMENT_KEYS = new Set(['ref', 'role', 'name', 'bbox', 'filled', 'redacted', 'disabled']);
   const TOP_KEYS = new Set(['redacted_regions', 'screenshot_dimensions', 'dom_structure']);
+  const BBOX_KEYS = new Set(['x', 'y', 'w', 'h']);
+  const DIMENSION_KEYS = new Set(['width', 'height']);
+  const DOM_KEYS = new Set(['elements']);
 
   const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
   const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
   const isShortString = (v, max) => typeof v === 'string' && v.length <= max;
 
+  function checkKeys(obj, allowed, where, errors) {
+    for (const key of Object.keys(obj)) if (!allowed.has(key)) errors.push(`${where} has unexpected key "${key}"`);
+  }
+
   function checkBbox(b, where, errors) {
     if (!isObject(b) || !['x', 'y', 'w', 'h'].every((k) => isNum(b[k]))) {
       errors.push(`${where}.bbox must be {x, y, w, h} numbers`);
-    } else if (b.w <= 0 || b.h <= 0 || b.x < 0 || b.y < 0) {
-      errors.push(`${where}.bbox must have x, y >= 0 and w, h > 0`);
+      return;
     }
-  }
-
-  function checkKeys(obj, allowed, where, errors) {
-    for (const key of Object.keys(obj)) if (!allowed.has(key)) errors.push(`${where} has unexpected key "${key}"`);
+    checkKeys(b, BBOX_KEYS, `${where}.bbox`, errors);
+    if (b.w <= 0 || b.h <= 0 || b.x < 0 || b.y < 0) errors.push(`${where}.bbox must have x, y >= 0 and w, h > 0`);
   }
 
   // Returns a list of problems; an empty list means the manifest is valid
@@ -51,12 +55,15 @@ globalThis.PrivagRedactionManifest ??= (() => {
     const dims = manifest.screenshot_dimensions;
     if (!isObject(dims) || !Number.isInteger(dims.width) || !Number.isInteger(dims.height) || dims.width <= 0 || dims.height <= 0) {
       errors.push('screenshot_dimensions must be {width, height} positive integers');
+    } else {
+      checkKeys(dims, DIMENSION_KEYS, 'screenshot_dimensions', errors);
     }
 
     const elements = manifest.dom_structure?.elements;
     if (!isObject(manifest.dom_structure) || !Array.isArray(elements)) {
       errors.push('dom_structure.elements must be an array');
     } else {
+      checkKeys(manifest.dom_structure, DOM_KEYS, 'dom_structure', errors);
       elements.forEach((el, i) => {
         const where = `dom_structure.elements[${i}]`;
         if (!isObject(el)) return errors.push(`${where} must be an object`);

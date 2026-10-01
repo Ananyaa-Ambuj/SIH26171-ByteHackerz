@@ -324,6 +324,11 @@ class StepValidationTests(ServerTestCase):
             broken(lambda m: m['dom_structure']['elements'][0].update(filled='yes')),
             broken(lambda m: m.update(dom_structure=[])),
             broken(lambda m: m.update(redacted_regions={})),
+            # Nested objects are allow-listed too, so no field can carry page text inside a box or the structure
+            broken(lambda m: m['redacted_regions'][0]['bbox'].update(text='2345 6789 0124')),
+            broken(lambda m: m['dom_structure']['elements'][0]['bbox'].update(label='Rahul Sharma')),
+            broken(lambda m: m['dom_structure'].update(page_text='Rahul Sharma')),
+            broken(lambda m: m['screenshot_dimensions'].update(url='https://bank.example/account')),
         ]
         for m in rejected:
             self.assertEqual(self.step(step_body(manifest=m))[0].status_code, 400, m)

@@ -55,6 +55,13 @@ describe('valid manifest', () => {
 });
 
 describe('each violation is reported (the frame is then withheld)', () => {
+  test('nested objects are allow-listed too: a bbox, the dimensions or dom_structure cannot carry page text', () => {
+    assertRejected(errorsAfter((m) => { m.redacted_regions[0].bbox.text = '2345 6789 0124'; }), /redacted_regions\[0\]\.bbox has unexpected key "text"/);
+    assertRejected(errorsAfter((m) => { m.dom_structure.elements[0].bbox.label = 'Rahul Sharma'; }), /elements\[0\]\.bbox has unexpected key "label"/);
+    assertRejected(errorsAfter((m) => { m.dom_structure.page_text = 'Rahul Sharma'; }), /dom_structure has unexpected key "page_text"/);
+    assertRejected(errorsAfter((m) => { m.screenshot_dimensions.url = 'https://bank.example/account'; }), /screenshot_dimensions has unexpected key "url"/);
+  });
+
   test('an extra region key such as text_snippet: OCR text must never ride along with the frame', () => {
     assertRejected(errorsAfter((m) => { m.redacted_regions[0].text_snippet = 'Rahul Sharma 2345 6789 0124'; }), /redacted_regions\[0\].*"text_snippet"/);
   });

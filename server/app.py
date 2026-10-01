@@ -55,6 +55,9 @@ MANIFEST_SOURCES = ('dom_text', 'dom_field', 'dom_media', 'florence_od', 'floren
 REGION_KEYS = {'type', 'method', 'source', 'bbox', 'value'}
 ELEMENT_KEYS = {'ref', 'role', 'name', 'bbox', 'filled', 'redacted', 'disabled'}
 TOP_KEYS = {'redacted_regions', 'screenshot_dimensions', 'dom_structure'}
+BBOX_KEYS = {'x', 'y', 'w', 'h'}
+DIMENSION_KEYS = {'width', 'height'}
+DOM_KEYS = {'elements'}
 
 def _is_num(v):
     # bool is an int in Python but not a number in JavaScript; json.loads also accepts NaN and Infinity
@@ -71,7 +74,9 @@ def _is_short_string(v, max_len):
 def _check_bbox(b, where, errors):
     if not isinstance(b, dict) or not all(_is_num(b.get(k)) for k in ('x', 'y', 'w', 'h')):
         errors.append(f'{where}.bbox must be {{x, y, w, h}} numbers')
-    elif b['w'] <= 0 or b['h'] <= 0 or b['x'] < 0 or b['y'] < 0:
+        return
+    _check_keys(b, BBOX_KEYS, f'{where}.bbox', errors)
+    if b['w'] <= 0 or b['h'] <= 0 or b['x'] < 0 or b['y'] < 0:
         errors.append(f'{where}.bbox must have x, y >= 0 and w, h > 0')
 
 def _check_keys(obj, allowed, where, errors):
@@ -114,12 +119,15 @@ def validate_manifest(manifest):
     if not isinstance(dims, dict) or not _is_int(dims.get('width')) or not _is_int(dims.get('height')) \
             or dims['width'] <= 0 or dims['height'] <= 0:
         errors.append('screenshot_dimensions must be {width, height} positive integers')
+    else:
+        _check_keys(dims, DIMENSION_KEYS, 'screenshot_dimensions', errors)
 
     dom = manifest.get('dom_structure')
     elements = dom.get('elements') if isinstance(dom, dict) else None
     if not isinstance(elements, list):
         errors.append('dom_structure.elements must be an array')
     else:
+        _check_keys(dom, DOM_KEYS, 'dom_structure', errors)
         for i, el in enumerate(elements):
             where = f'dom_structure.elements[{i}]'
             if not isinstance(el, dict):
