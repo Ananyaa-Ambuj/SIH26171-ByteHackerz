@@ -16,7 +16,7 @@ const MODEL_ID = 'onnx-community/Florence-2-base-ft';
 
 // Per-module precision recommended for Florence-2 on WebGPU (transformers.js dtypes guide):
 // the encoders are sensitive to quantization; fp16/q4 keeps download and VRAM small
-// (full fp32 is ~1 GB for base-ft and ~3.1 GB for large-ft, too much for a 4 GB GPU).
+// (full fp32 weights take twice the bits of fp16 and eight times those of q4).
 const WEBGPU_DTYPE = {
     embed_tokens: 'fp16',
     vision_encoder: 'fp16',
