@@ -14,6 +14,9 @@ env.backends.onnx.wasm.wasmPaths = new URL('./', import.meta.url).href;
 
 const MODEL_ID = 'onnx-community/Florence-2-base-ft';
 
+// Most tokens Florence may generate for <OCR_WITH_REGION>; text that needs more is cut off there
+const OCR_MAX_TOKENS = 512;
+
 // Per-module precision recommended for Florence-2 on WebGPU (transformers.js dtypes guide):
 // the encoders are sensitive to quantization; fp16/q4 keeps download and VRAM small
 // (full fp32 weights take twice the bits of fp16 and eight times those of q4).
@@ -201,7 +204,10 @@ async function detectPII(m, image) {
     const ocrTask = '<OCR_WITH_REGION>';
     const ocrPrompts = processor.construct_prompts(ocrTask);
     const ocrInputs = await processor(image, ocrPrompts);
-    const ocrOutput = await m.generate({ ...ocrInputs, max_new_tokens: 512 });
+    const ocrOutput = await m.generate({ ...ocrInputs, max_new_tokens: OCR_MAX_TOKENS });
+    // Output that reached the token limit was cut off: lines after the cut are never reported, so where they are is
+    // unknown and the caller masks every area OCR ran on (fail closed)
+    const ocrTruncated = (ocrOutput.dims?.at(-1) ?? 0) >= OCR_MAX_TOKENS;
     const ocrText = processor.batch_decode(ocrOutput, { skip_special_tokens: false })[0];
     const ocrParsed = processor.post_process_generation(ocrText, ocrTask, image.size);
     const ocrData = ocrParsed[ocrTask] || ocrParsed;
@@ -221,7 +227,7 @@ async function detectPII(m, image) {
         });
     }
 
-    return { regions, otherText };
+    return { regions, otherText, ocrTruncated };
 }
 
 // Worker Message Listener — Interface to Extension / Webpage
@@ -241,7 +247,7 @@ self.addEventListener('message', async (e) => {
     if (type === 'DETECT') {
         try {
             const startTime = performance.now();
-            const { device: usedDevice, regions, otherText } = await detect(imageDataUrl);
+            const { device: usedDevice, regions, otherText, ocrTruncated } = await detect(imageDataUrl);
             const elapsedMs = Math.round(performance.now() - startTime);
 
             self.postMessage({
@@ -251,6 +257,7 @@ self.addEventListener('message', async (e) => {
                 device: usedDevice,
                 regions,
                 otherText,
+                ocrTruncated,
             });
         } catch (err) {
             self.postMessage({ type: 'ERROR', requestId, error: err.message });

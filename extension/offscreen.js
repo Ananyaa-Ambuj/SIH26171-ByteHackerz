@@ -145,6 +145,7 @@ async function runVision(img, mediaRegions, domRegions) {
             otherText: (detection.otherText || []).map((t) => shift(t.bbox)),
             latencyMs: detection.latencyMs,
             device: detection.device,
+            ocrTruncated: Boolean(detection.ocrTruncated),
         };
         visionCache.set(key, result);
         if (visionCache.size > VISION_CACHE_SIZE) visionCache.delete(visionCache.keys().next().value);
@@ -162,8 +163,12 @@ async function runVision(img, mediaRegions, domRegions) {
     const unverified = result.otherText
         .filter((b) => unscannable.some((area) => contains(area, b.x + b.w / 2, b.y + b.h / 2)))
         .map((bbox) => ({ type: 'unverified_text', source: 'florence_ocr', method: 'black_box', bbox }));
+    // OCR stopped at its token limit: text after the cut was never read, so every area it ran on is blacked out
+    const unread = result.ocrTruncated
+        ? mediaRegions.map((r) => ({ type: 'unread_text', source: 'florence_ocr', method: 'black_box', bbox: { x: r.x, y: r.y, w: r.w, h: r.h } }))
+        : [];
     return {
-        regions: [...result.regions, ...unverified],
+        regions: [...result.regions, ...unverified, ...unread],
         latencyMs: cached ? 0 : result.latencyMs,
         device: result.device,
         mode: cached ? 'cached' : 'ran',
