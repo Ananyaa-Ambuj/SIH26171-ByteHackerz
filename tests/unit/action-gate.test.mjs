@@ -126,4 +126,32 @@ describe('click: submit and pay need the user', () => {
     const result = Gate.check({ action: 'click', ref: 'e1', confirmed: true }, { label: 'Pay now' }, CTX);
     assert.equal(result.verdict, 'confirm');
   });
+
+  test('more commit labels ask the user too, including Hindi ones (review L9)', () => {
+    for (const label of ['Place your order', 'Payments', 'Order now', 'Proceed to payment', 'Complete purchase', 'भुगतान करें']) {
+      assert.equal(click({ label }).verdict, 'confirm', label);
+    }
+  });
+
+  test('a button inside a filled-in form asks the user, because a script can submit the form from it', () => {
+    assert.equal(click({ label: 'Continue', inFilledForm: true }).verdict, 'confirm');
+  });
+});
+
+describe('ports, schemes and the Privag server', () => {
+  test('another port on the same host is another site, so a page on localhost:3000 cannot reach localhost:5000 (review L5)', () => {
+    assert.equal(Gate.sameSite('http://localhost:5000/', 'http://localhost:3000/'), false);
+    assert.equal(Gate.sameSite('http://localhost:3000/next', 'http://localhost:3000/'), true);
+  });
+
+  test('an http -> https upgrade on the same host stays on site, a downgrade does not', () => {
+    assert.equal(Gate.sameSite('https://shop.example.in/pay', 'http://shop.example.in/'), true);
+    assert.equal(Gate.sameSite('http://shop.example.in/pay', 'https://shop.example.in/'), false);
+  });
+
+  test('links and forms pointing at the Privag server are blocked even when the task started on that host', () => {
+    const ctx = { startUrl: 'http://127.0.0.1:5000/', blockedOrigins: ['http://127.0.0.1:5000'] };
+    assertBlocked(Gate.check({ action: 'click' }, { href: 'http://127.0.0.1:5000/api/config', label: 'Settings' }, ctx));
+    assertBlocked(Gate.check({ action: 'click' }, { submitsForm: true, formAction: 'http://127.0.0.1:5000/api/config', label: 'Save' }, ctx));
+  });
 });

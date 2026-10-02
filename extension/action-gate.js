@@ -10,35 +10,50 @@ globalThis.PrivagGate ??= (() => {
   // Field purposes the agent may never type into: the user enters these themselves
   const SECRET_FIELDS = new Set(['password', 'otp', 'cvv']);
 
-  // Button / link labels that commit something (word match, any language case)
-  const COMMIT_LABEL = /\b(pay|pay now|payment|place order|checkout|check out|buy|buy now|purchase|submit|confirm|transfer|send money|donate|book now|proceed to pay)\b/i;
+  // Button / link labels that commit something (word match, any letter case), plus common Hindi labels
+  const COMMIT_LABEL = /\b(pay|pay now|payments?|make payment|place (your )?order|order now|checkout|check out|buy|buy now|purchase|complete (purchase|order|payment)|submit|confirm|transfer|send money|donate|book now|subscribe|proceed to (pay|payment|checkout)|payer)\b/i;
+  const COMMIT_LABEL_HI = /भुगतान|पेमेंट|जमा करें/;
 
-  // Hostname without a leading "www.", lowercased; null when the URL cannot be parsed or is not http(s)
-  function hostOf(url) {
+  function parse(url) {
     try {
       const u = new URL(url);
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-      return u.hostname.toLowerCase().replace(/^www\./, '');
+      return u.protocol === 'http:' || u.protocol === 'https:' ? u : null;
     } catch {
       return null;
     }
   }
 
-  // Same site as the run's start page: the same host (ignoring "www."), or a subdomain of it. A parent
-  // domain or a sibling subdomain counts as off-site (over-blocking is the safe side).
+  // Hostname without a leading "www.", lowercased; null when the URL cannot be parsed or is not http(s)
+  function hostOf(url) {
+    return parse(url)?.hostname.toLowerCase().replace(/^www\./, '') ?? null;
+  }
+
+  // Same site as the run's start page: the same host (ignoring "www.") or a subdomain of it, on the same port,
+  // with the same scheme or an http -> https upgrade. A parent domain, a sibling subdomain or another port (e.g.
+  // a different local service on localhost) counts as off-site (over-blocking is the safe side).
   function sameSite(url, startUrl) {
+    const u = parse(url);
+    const start = parse(startUrl);
+    if (!u || !start) return false;
     const host = hostOf(url);
-    const start = hostOf(startUrl);
-    if (!host || !start) return false;
-    return host === start || host.endsWith(`.${start}`);
+    const startHost = hostOf(startUrl);
+    if (host !== startHost && !host.endsWith(`.${startHost}`)) return false;
+    if (u.port !== start.port) return false;
+    return u.protocol === start.protocol || (start.protocol === 'http:' && u.protocol === 'https:');
+  }
+
+  // Whether the URL points at one of the given origins (e.g. the Privag server itself)
+  function isBlockedOrigin(url, origins) {
+    const u = parse(url);
+    return Boolean(u) && (origins || []).some((o) => parse(o)?.origin === u.origin);
   }
 
   const allow = () => ({ verdict: 'allow', reason: '' });
   const block = (reason) => ({ verdict: 'block', reason });
   const confirm = (reason) => ({ verdict: 'confirm', reason });
 
-  // action: {action, ...}; target: the element description from content.js or null; ctx: {startUrl}
-  // -> {verdict: 'allow' | 'block' | 'confirm', reason}
+  // action: {action, ...}; target: the element description from content.js or null;
+  // ctx: {startUrl, blockedOrigins} -> {verdict: 'allow' | 'block' | 'confirm', reason}
   function check(action, target, ctx) {
     const verb = action?.action;
     if (!VERBS.has(verb)) return block(`Unknown action "${verb}"`);
@@ -59,17 +74,25 @@ globalThis.PrivagGate ??= (() => {
         // An in-page script link: stays on the page, but may still commit something
       } else if (!hostOf(target.href)) {
         return block('The link leaves the browser page (non-web URL)');
+      } else if (isBlockedOrigin(target.href, ctx?.blockedOrigins)) {
+        return block('The agent may not open the Privag server itself');
       } else if (!sameSite(target.href, ctx?.startUrl)) {
         return block(`Off-site navigation to ${hostOf(target.href)} is blocked`);
       }
     }
     if (target.submitsForm) {
+      if (target.formAction && isBlockedOrigin(target.formAction, ctx?.blockedOrigins)) {
+        return block('The form submits to the Privag server itself');
+      }
       if (target.formAction && !sameSite(target.formAction, ctx?.startUrl)) {
         return block(`The form submits off-site to ${hostOf(target.formAction) || target.formAction}`);
       }
       return confirm('This click submits a form');
     }
-    if (COMMIT_LABEL.test(target.label || '')) return confirm(`"${target.label}" looks like a submit or payment`);
+    const label = target.label || '';
+    if (COMMIT_LABEL.test(label) || COMMIT_LABEL_HI.test(label)) return confirm(`"${label}" looks like a submit or payment`);
+    // A button inside a form the page already holds values in may submit it from script
+    if (target.inFilledForm) return confirm('This button is part of a filled-in form');
     return allow();
   }
 
