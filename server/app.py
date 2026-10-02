@@ -200,7 +200,7 @@ def api():
     try:
         response = llm.get_response(data["manifest"], data["image"], data["task"], data.get("history", []))
     except llm.LLMError as e:
-        # No answer from the model: retrying the same step will not help, so the extension stops
+        # No answer from the model: the extension pauses the task and shows this error until the user resumes
         return jsonify({"error": f"LLM request failed: {e}"}), 502
     return jsonify(response)
     

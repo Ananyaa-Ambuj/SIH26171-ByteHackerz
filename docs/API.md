@@ -65,7 +65,7 @@ This is the request the extension sends (`extension/sidepanel.js`, `runAgentStep
 const response = await fetch(`${serverUrl}/api`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ image: redactedUrl, task: masker.maskText(goal), history: actionHistory, manifest }),
+  body: JSON.stringify({ image: redactedUrl, task: masker.maskText(task.goal, 'task'), history: actionHistory.slice(-50), manifest }),
   signal: serverRequest.signal
 });
 ```
@@ -191,13 +191,13 @@ All errors are JSON objects with an `error` string; no HTML error page and no tr
 
 | Status | When | Body |
 | :--- | :--- | :--- |
-| `400` | Body not a JSON object, or a field breaks the rules above | `{"error": "..."}`; for the manifest also `"details": [...]` |
+| `400` | Body not a JSON object (including numbers too large for a double and JSON nested too deeply to parse), or a field breaks the rules above | `{"error": "..."}`; for the manifest also `"details": [...]` |
 | `405` | Wrong method (e.g. `GET /api`) | `{"error": "405 Method Not Allowed"}` |
 | `413` | Body larger than 16 MiB | `{"error": "Request body is larger than 16 MiB"}` |
 | `500` | Unexpected server error (traceback only in the server log) | `{"error": "Internal server error"}` |
 | `502` | The LLM gave no usable answer: unreachable, timeout, HTTP error, non-JSON or not a chat completion | `{"error": "LLM request failed: <short reason>"}` (no URLs or host names; details go to the server log) |
 
-On `502` retrying the same step will not help; the extension's agent loop should stop. The server log records the LLM URL and the error, never the request body, image, task or history.
+On a non-`200` answer the extension pauses the task and shows the `error` (and the first `details` entry); the user can fix the cause (e.g. start the model server) and press Resume. The server log records the LLM URL and the error, never the request body, image, task or history.
 
 ---
 

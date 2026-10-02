@@ -33,25 +33,25 @@ What never crosses: the raw screenshot, field values, page text, the real values
 
 Injected into the task's tab with `chrome.scripting.executeScript`; the side panel then calls its functions the same way.
 
-1. **Visible text.** Text nodes are grouped by their nearest block-level element and validated as one string, so a value split over inline elements (`<b>2345</b> 6789 0124`) is still found. Each match is boxed with a `Range` (one box per line).
-2. **Validators, not regexes.** A candidate pattern only proposes a span; the type's validator decides: Aadhaar (12 digits, first digit 2-9, Verhoeff check digit), card numbers (13-19 digits, Luhn), PAN (`AAAAA9999A` with a valid holder-type letter), Indian mobile numbers (optional `+91`/`0`, first digit 6-9), UPI IDs (`handle@psp`, no dot in the PSP part), IFSC (`AAAA0XXXXXX`), emails, and OTPs only when an OTP label precedes the digits. A number that fails its checksum is left alone.
-3. **Form fields by purpose.** Password inputs, `autocomplete` tokens (`one-time-code`, `cc-number`, `cc-csc`, other `cc-*`, `tel*`, `email`, `name`, …) and name/id/label hints (Aadhaar, PAN, UPI/VPA, IFSC, OTP, CVV, phone, email, full name) decide a field's type whatever its value. Passwords, OTPs, CVVs and other card fields are never read: the field is just blacked out. Fields the browser autofilled are masked even when the page cannot read their value yet, and a `<select>` is masked when the option it shows is PII.
+1. **Visible text.** Text nodes are grouped by their nearest block-level element and validated as one string, so a value split over inline elements (`<b>2345</b> 6789 0124`) is still found. Line breaks, images and inline-block boxes end a group, and every text node is also checked on its own, so a value glued to its neighbour (`<span>Mobile</span><span>9123456789</span>`) is found too. Text that CSS shows in capitals is checked in capitals. Each match is boxed with a `Range` (one box per line).
+2. **Validators, not regexes.** A candidate pattern only proposes a span; the type's validator decides: Aadhaar (12 digits, first digit 2-9, Verhoeff check digit), card numbers (13-19 digits, Luhn), PAN (`AAAAA9999A` with a valid holder-type letter), Indian mobile numbers (optional `+91`/`0091`/`0`, first digit 6-9), UPI IDs (`handle@psp`, no dot in the PSP part), IFSC (`AAAA0XXXXXX`), emails, and OTPs only next to an OTP label ("OTP: 482913", "482913 is your OTP"). Numbers are read as runs of digit groups and every stretch of whole groups is tried, so two numbers printed side by side are each found. A number that fails its checksum is left alone.
+3. **Form fields by purpose.** Password inputs, `autocomplete` tokens (`one-time-code`, `current-password`, `cc-number`, `cc-csc`, other `cc-*`, `tel*`, `email`, `name`, …) and name/id/label hints, split into words first (`otp_code`, `txtCVV`, `upiPin`), decide a field's type whatever its value. Passwords, OTPs, CVVs, PINs and other card fields are never read: the field is just blacked out, and a password field stays one after "show password". A value that is wholly one PII value, or sits in a field with a purpose, gets a placeholder; any other text holding PII (a note with a phone number and an email) is blacked out without being read. Autofilled fields are masked even when the page cannot read their value yet; a `<select>` is masked when the option it shows is PII; PII in a placeholder or a button label is blacked out.
 4. **Profile photos.** Images whose `alt`/class/id/src mention an avatar or profile photo get a solid mask without waiting for vision.
-5. **Media for Pass 2.** Images, video, canvas and CSS background images are reported for vision; iframes, frames, embeds and objects (including PDFs, which the browser shows inside an embed) are reported as *unscannable*, because the DOM pass cannot read inside them.
+5. **Media for Pass 2.** Images, video, canvas and CSS background images (except small square icons; a wide, thin canvas with a line of text still counts) are reported for vision; iframes, frames, embeds and objects (including PDFs, which the browser shows inside an embed) are reported as *unscannable*, because the DOM pass cannot read inside them.
 6. **Interactive elements.** Buttons, links, fields and ARIA widgets in view get refs (`e1`, `e2`, …) that the model targets instead of guessing pixels. Their names go through the same vault as everything else.
-7. **MutationObserver.** A sequence number is bumped on every DOM mutation (open and closed shadow roots included), input, scroll and resize. Before a scan the side panel waits until the page has been quiet for a moment; after the screenshot it compares the sequence number with the one the scan saw. If the page changed in between, it scans and captures again; a page that never holds still gets the regions of the scans before *and* after its last screenshot masked.
+7. **MutationObserver and a still page.** A sequence number is bumped on every DOM mutation (open and closed shadow roots included), input, scroll and resize. CSS animations, transitions and Web Animations, which move content without any mutation, are paused from before the scan until after the screenshot. The side panel waits until the page has been quiet for a moment, scans, captures, and uses the frame only if the DOM was still from 100 ms before the scan until after the screenshot. Otherwise it tries again; after 3 tries the frame is withheld.
 
 ### 2.2 Pass 2: Florence-2 vision (`client-vision/worker.js` → `extension/florence-worker.bundle.js`)
 
-- Runs in a Web Worker hosted by the offscreen document, through Transformers.js and ONNX Runtime on WebGPU, with a WASM fallback (at load time, and again if a WebGPU inference fails).
+- Runs in a Web Worker through Transformers.js and ONNX Runtime on WebGPU, with a WASM fallback (at load time, and again if a WebGPU inference fails). In Chrome/Brave the worker lives in the offscreen document; Firefox has no offscreen API, so the side panel hosts the same page in a hidden iframe.
 - Looks only at the media regions from Pass 1, cut out of the screenshot onto a white canvas. No media on screen means the pass is skipped; media whose pixels are unchanged since a recent step reuses the cached result.
-- `<OD>` finds people and faces (overlapping boxes merged); `<OCR_WITH_REGION>` reads text lines. A line is PII when it contains a value that passes a validator, or carries a PII label (Aadhaar, PAN, card, phone, email, UPI, IFSC, OTP) next to a value-looking token, which catches values OCR garbled. Inside unscannable media every OCR line is masked.
+- `<OD>` finds people and faces (overlapping boxes merged); `<OCR_WITH_REGION>` reads text lines. A line is PII when it contains a value that passes a validator, or carries a PII label (Aadhaar, PAN, card, phone, email, UPI, IFSC, OTP) next to a value-looking token, which catches values OCR garbled. Inside unscannable media every OCR line is masked. OCR output is limited to 512 tokens; when a crop needs more, the lines after the cut are never reported, so every media area of that crop is blacked out.
 
 ### 2.3 Pass 3: canvas masks (`extension/offscreen.js`)
 
 | Method | Applied to | Drawn as |
 | :--- | :--- | :--- |
-| `black_box` | passwords, OTPs, CVV/card fields, card numbers, Aadhaar, PAN; text PII in images; every OCR line inside frames and embeds | solid `#000000`, padded 4 px / 3 px |
+| `black_box` | passwords, OTPs, CVV/card fields, card numbers, Aadhaar, PAN; free text holding PII; text PII in images; every OCR line inside frames and embeds | solid `#000000`, padded 4 px / 3 px |
 | `solid_mask` | faces (Florence `<OD>`) and profile photos (DOM rule) | solid grey `#7f7f7f` (no blur) |
 | `semantic_mock` | emails, phone numbers, UPI IDs, IFSC codes, names | a format-preserving fake on the page's own background colour |
 
@@ -61,15 +61,15 @@ Masks are drawn first and fakes last, then the Set-of-Marks ref tags. Black-boxe
 
 The side panel's in-memory map between real values and placeholders. Fakes are clearly synthetic: Aadhaar `0000 0000 0001` (real ones never start with 0), PAN `ZZZZZ0001Z` (Z is not a holder type), card `4111 1111 1111 0001`, phone `90000 00001`, email `user_0001@example.com`, UPI `user_0001@fakebank`, IFSC `ZZZZ0000001`, name `Test User 0001`. Every text that leaves the device goes through it: element names, the task (where `{{…}}` marks other secrets) and the action history.
 
-Each fake remembers where its real value came from. When the model types a fake, the real value is restored only **into the field it was read from**, or, for a value from the task or the page text, **into a field whose detected purpose matches its type** (a PAN into a PAN field). Anywhere else the action is blocked and the model is told why. The vault lives as long as the task.
+Each fake remembers where its real value came from. When the model types a fake (with any spacing or letter case), the real value is restored only **into the field it was read from** (field ids are unique per page, so a field on the next page never inherits the binding), or, for a value from the task or the page text, **into a field whose purpose matches its type** (a PAN into a PAN field). A field's purpose comes from its type, `autocomplete` and labels, never from what is currently typed in it. Anywhere else the action is blocked and the model is told why. The vault lives as long as the task.
 
 ### 2.5 The action gate (`extension/action-gate.js`)
 
 Every action from the server is checked on the device against a description of its target element before anything touches the page:
 
 - typing into password, OTP or CVV fields is blocked (the user enters those);
-- a link or form submission to another site is blocked (same site = same host without `www.`, or a subdomain of the start host);
-- anything that submits a form or is labelled like a payment (`Pay`, `Place order`, `Submit`, `Confirm`, …) waits for the user's **Allow once** click in the side panel;
+- a link or form submission to another site, or to the Privag server itself, is blocked (same site = same host without `www.` or a subdomain of the start host, on the same port, with the same scheme or an http → https upgrade). A click on text inside a button, a label for it, a `formaction` override and links around shadow-DOM content are all followed to the real target;
+- anything that submits a form, is labelled like a payment (`Pay`, `Place your order`, `Submit`, `Confirm`, `भुगतान`, …) or is a button inside a form that already holds values waits for the user's **Allow once** click in the side panel; after the click the target is checked again, and the action runs only on the very element that was allowed;
 - only the action fields the extension knows are used, so a reply cannot smuggle in flags.
 
 ### 2.6 The agent loop (`extension/sidepanel.js`)
@@ -81,7 +81,7 @@ Every action from the server is checked on the device against a description of i
 
 ### 2.7 Fail-closed rules
 
-A frame is **withheld** (nothing is sent) when the DOM pass cannot run on the page (browser-internal and store pages, injection errors), when vision is needed but the model is not loaded or fails or times out, when the active tab changes during capture, or when the manifest fails its schema check (`extension/redaction-manifest.js`). Florence-2 gives no calibrated confidence, so "low confidence" is handled structurally: text in regions the DOM pass cannot read is masked line by line, and labelled lines whose value OCR garbled are masked too.
+A frame is **withheld** (nothing is sent) when the DOM pass cannot run on the page (browser-internal and store pages, injection errors), when the page keeps changing between the scan and the screenshot, when vision is needed but the model is not loaded or fails or times out or reports a face or text without a position, when the active tab changes during capture, or when the manifest fails its schema check (`extension/redaction-manifest.js`). Florence-2 gives no calibrated confidence, so "low confidence" is handled structurally: text in regions the DOM pass cannot read is masked line by line, labelled lines whose value OCR garbled are masked too, and media whose OCR was cut off is blacked out whole.
 
 ---
 
@@ -125,6 +125,8 @@ A Flask app (`server/app.py`) that validates the request (JSON object, masked ta
 
 - Names in free page text are not detected (on-device NER is planned); name *fields* are masked.
 - Text drawn by CSS (`::before`/`::after` content) is not read by the DOM pass.
-- Florence-2 sees each crop resized to its input size, so small text in a large image or frame can be missed by OCR; such text is then not masked.
+- Florence-2 sees each crop resized to its input size, so small text in a large image or frame can be missed by OCR; text OCR does not see is not masked.
+- Pages that change faster than every 100 ms (live feeds, script-driven tickers) are withheld on every step, so the agent cannot work on them.
+- Pausing animations for the capture overrides the page's own `animation-play-state` for those animations afterwards.
 - The gate cannot see navigations started by page scripts; the loop notices them afterwards (the tab left the start site) and pauses.
 - Firefox: see the README's status table.

@@ -1,62 +1,38 @@
-# Privag AI — SIH26171 Evaluation Criteria Alignment Matrix
+# Privag AI — SIH26171 evaluation criteria
 
-This document provides a direct mapping between the **5 evaluation criteria** defined by ISRO for Problem Statement SIH26171 and the specific algorithmic implementations in **Privag AI**.
-
----
-
-### Criterion 1: Visual Context Accuracy (Weight: 25%)
-
-> _Does the upstream agent understand the page context accurately despite regions being redacted?_
-
-- **Our Solution:** **The Companion Redaction Manifest**
-  - The server is not expected to blindly hallucinate what lies beneath a black rectangle.
-  - Alongside the sanitized image, Privag AI transmits a structured JSON metadata manifest.
-  - The manifest specifies:
-    1. The semantic category of the redacted region (`password`, `aadhaar`, `email`, `face`).
-    2. Structural DOM surroundings (associated field labels, surrounding buttons, active form structure).
-  - **Result:** Upstream models (e.g. `gemma3:4b`, Qwen-VL) maintain 100% functional comprehension of the form without ever observing private user strings.
+How the five evaluation criteria of problem statement SIH26171 map to the code, and what has been measured so far. Every figure here comes from [`BENCHMARKS.md`](BENCHMARKS.md), which links the raw output; anything else says **not yet measured**.
 
 ---
 
-### Criterion 2: PII Detection Recall and Precision (Weight: 20%)
+### 1. Visual context accuracy (25%)
 
-> _How effectively does the on-device system catch all sensitive elements without false positives?_
+*Does the server-side agent understand the page although regions are masked?*
 
-- **Our Solution:** **The Dual-Pass Synergy Architecture**
-  - **Pass 1 (DOM Scanner):** Form fields (`<input type="password">`, emails, card numbers) are captured deterministically with **100% precision and recall**.
-  - **Pass 2 (Florence-2 WebGPU):** Catches unstructured visual text, photos, and rendered IDs that cannot be derived from HTML structure alone.
-  - **Result:** High combined recall across both structured forms and unstructured canvas/image elements.
+- **How:** the masked frame comes with a redaction manifest (`type`, `method`, `source`, `bbox` per mask) and the page's interactive elements with refs (`e1`, `e2`, …) drawn on the frame (Set-of-Marks). Values the agent may need are format-preserving look-alikes (`user_0001@example.com`, `90000 00001`) or placeholders for black-boxed IDs, so the model can still fill a form without seeing real values.
+- **Measured:** not yet measured. No labelled set of pages was scored, and Gemma 4 was not run in this repository's tests (the end-to-end tests use a mock model).
 
----
+### 2. PII detection recall and precision (20%)
 
-### Criterion 3: Redaction Precision (Weight: 20%)
+*How much PII does the device find, and how much harmless text does it mask by mistake?*
 
-> _Are the redactions clean, correctly bounded, and non-destructive to surrounding visual elements?_
+- **How:** checksum and structure validators for DOM text and form values (Verhoeff for Aadhaar, Luhn for cards, PAN structure, Indian mobile, UPI, IFSC, labelled OTPs), field purposes from `type`/`autocomplete`/labels, and Florence-2 face detection and OCR on images and frames.
+- **Tested:** unit tests and the privacy end-to-end test check specific cases (each PII type on the fixture page is masked, invalid checksums are not).
+- **Measured:** recall and precision not yet measured. That needs a labelled test set (for example WebPII), which this repository does not have yet.
 
-- **Our Solution:** **Native Canvas 2D Engine with Subpixel Safety Padding**
-  - **Subpixel Anti-Aliasing Guard:** Adding a $4\text{px}$ horizontal and $3\text{px}$ vertical padding around every bounding box prevents text character edges from peeking through anti-aliased font boundaries.
-  - **True Gaussian Blur with Strict Clipping:** Facial regions are clipped before applying `ctx.filter = 'blur(14px)'`, ensuring zero blur bleed onto adjacent UI text or buttons.
-  - **Result:** Bounding boxes precisely occlude sensitive data while leaving all navigation elements (buttons, inputs, labels) sharp and clickable.
+### 3. Redaction precision (20%)
 
----
+*Are the masks complete and tight?*
 
-### Criterion 4: Client-Side Resource Usage (Weight: 20%)
+- **How:** black boxes padded 4 px / 3 px; solid grey masks for faces and profile photos; frames are withheld when the page changes between the scan and the screenshot, so boxes are never drawn on pixels from another moment.
+- **Tested:** the privacy end-to-end test checks that every black box and solid mask in the sent image is solid (98% or more of each mask's interior has the mask colour). A race harness drew PII in magenta on moving and changing pages and counted magenta pixels left in the sent frames (see BENCHMARKS.md).
+- **Measured:** "no PII readable when our own masked frames are run through OCR again" is not yet measured.
 
-> _Does the solution run efficiently on consumer client devices without hogging RAM or freezing the browser?_
+### 4. Client-side resource usage (20%)
 
-- **Our Solution:**
-  - **Zero-Compute First Line of Defense:** Form fields are filtered in $<20\text{ms}$ with negligible CPU and 0 MB VRAM.
-  - **WebGPU Hardware Acceleration:** When Florence-2 executes, it utilizes low-overhead WebGPU shader pipelines rather than CPU thread thrashing.
-  - **WASM Fallback:** In environments where WebGPU is unsupported or hardware access is restricted, the engine automatically falls back to 4-bit quantized WebAssembly (WASM), ensuring cross-platform stability without client crashes.
-  - **Isolated Offscreen Threading:** All vision tasks run in a background Web Worker, ensuring 0% UI thread blocking and maintaining 60 FPS scrolling for the user.
+- **How:** the DOM pass is plain JavaScript; Florence-2 runs only when images, video, canvas or frames are on screen, and unchanged media reuses the previous result.
+- **Measured:** model download size, model load time from the browser cache and peak memory per browser process are in [`BENCHMARKS.md`](BENCHMARKS.md).
 
----
+### 5. End-to-end latency (15%)
 
-### Criterion 5: End-to-End Latency (Weight: 15%)
-
-> _How quickly can an action decision be generated per interaction cycle?_
-
-- **Our Solution:** **Tiered Execution Pipeline**
-  - **DOM Form Steps:** Sub-second turnaround when interacting with standard text forms.
-  - **Visual Screen Steps:** Completes full client vision in $\approx 3.18\text{s}$ on consumer-grade laptop GPUs (GTX 1650).
-  - **Model-Agnostic Server VLM:** Returns structured action JSON in $\approx 1.2\text{s}$ over local Ollama inference.
+- **Measured:** per-stage times of real agent steps (settle, DOM scan, capture, vision, masking, server, execute) with a mock model are in [`BENCHMARKS.md`](BENCHMARKS.md).
+- **Not yet measured:** Gemma 4 inference time, so a full step with the real model is not yet measured.
