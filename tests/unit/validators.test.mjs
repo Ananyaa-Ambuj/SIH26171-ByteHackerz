@@ -175,10 +175,35 @@ describe('find()', () => {
     assert.deepEqual(V.find(`Card ${card}`), [{ type: 'card', start: 5, end: 5 + card.length, value: card }]);
   });
 
-  test('a 12-digit run inside a longer grouped number is not reported, so reference numbers are not masked', () => {
-    // Control: the same 12 digits on their own are an Aadhaar
-    assert.deepEqual(V.find('Ref 2345 6789 0124').map((f) => f.type), ['aadhaar']);
-    assert.deepEqual(V.find('Ref 1111 2345 6789 0124 9999'), []);
+  test('numbers printed side by side are each found: missing one leaks it, masking a reference number does not', () => {
+    // Regression (adversarial review M2): a candidate followed by another digit group used to be dropped
+    assert.deepEqual(V.find('9876543210 9123456789').map((f) => `${f.type}:${f.value}`), ['phone:9876543210', 'phone:9123456789']);
+    assert.deepEqual(V.find('Mumbai 400001 9876543210').map((f) => f.type), ['phone']);
+    assert.deepEqual(V.find('Card 4111 1111 1111 1111 12/28').map((f) => f.value), ['4111 1111 1111 1111']);
+    // A valid Aadhaar printed inside a longer grouped number is masked too (over-masking is the safe side)
+    assert.deepEqual(V.find('Ref 1111 2345 6789 0124 9999').map((f) => f.value), ['2345 6789 0124']);
+  });
+
+  test('a stretch never starts or ends inside a group of digits, so part of one long number is never a match', () => {
+    assert.deepEqual(V.find('Ref 23456789012411'), []);
+    assert.deepEqual(V.find('Ref 112345678901240'), []);
+  });
+
+  test('a number followed by @ is the handle of a UPI ID or email, not a phone number', () => {
+    assert.deepEqual(V.find('Pay 9876543210@ybl').map((f) => `${f.type}:${f.value}`), ['upi:9876543210@ybl']);
+    assert.deepEqual(V.find('Mail 9876543210@gmail.com').map((f) => f.type), ['email']);
+  });
+
+  test('the 0091 international prefix is accepted, so +91 written the long way is still masked', () => {
+    assert.deepEqual(V.find('Call 0091 98765 43210').map((f) => f.value), ['0091 98765 43210']);
+  });
+
+  test('common OTP phrasings are found, with the label before or after the code', () => {
+    for (const text of ['Your OTP for login is 482913', '482913 is your OTP', 'verification code is 4821']) {
+      assert.deepEqual(V.find(text).map((f) => f.type), ['otp'], text);
+    }
+    // Digits between the label and the number break the link, so other numbers on the line stay readable
+    assert.deepEqual(V.find('OTP valid for 10 minutes. Order 4567'), []);
   });
 
   test('"Order 0000000000013" yields nothing (the review saw a digit of it leak through a partial mask)', () => {

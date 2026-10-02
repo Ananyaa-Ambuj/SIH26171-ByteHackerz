@@ -56,14 +56,8 @@ globalThis.PrivagValidators ??= (() => {
   // T trust, B BOI, L local authority, J artificial juridical person, G government)
   const isPAN = (s) => /^[A-Z]{3}[ABCFGHLJPT][A-Z]\d{4}[A-Z]$/.test(String(s).trim());
 
-  // Indian mobile: optional +91 / 91 / 0 prefix, then 10 digits starting 6-9
-  const isPhone = (s) => {
-    const t = String(s).trim();
-    if (!/^(?:\+?91[ -]?|0)?[6-9](?:[ -]?\d){9}$/.test(t)) return false;
-    const d = digitsOf(t);
-    const national = d.length === 12 ? d.slice(2) : d.length === 11 ? d.slice(1) : d;
-    return national.length === 10 && /^[6-9]/.test(national);
-  };
+  // Indian mobile: optional +91 / 0091 / 91 / 0 prefix, then 10 digits starting 6-9
+  const isPhone = (s) => /^(?:\+91[ -]?|0091[ -]?|91[ -]?|0)?[6-9](?:[ -]?\d){9}$/.test(String(s).trim());
 
   // UPI ID (VPA): handle@psp where the PSP part has no dot (an email's domain does)
   const isUPI = (s) => /^[A-Za-z0-9][A-Za-z0-9._-]{1,255}@[A-Za-z][A-Za-z0-9]{1,63}$/.test(String(s).trim());
@@ -88,28 +82,63 @@ globalThis.PrivagValidators ??= (() => {
     upi: isUPI,
   };
 
-  // Candidate spans in priority order (a span claimed by an earlier type is not offered to a later one).
-  // Lookarounds keep a candidate to a whole token: no letters/digits glued on, and no further
-  // space-separated digit group, so a 12-digit run inside a longer number is never taken for an Aadhaar.
-  const CANDIDATES = {
-    card: /(?<![\w])(?<!\d[ -])\d(?:[ -]?\d){12,18}(?![ -]?\d)(?![\w])/g,
-    aadhaar: /(?<![\w])(?<!\d[ -])\d{4}[ -]?\d{4}[ -]?\d{4}(?![ -]?\d)(?![\w])/g,
-    phone: /(?<![\w+])(?<!\d[ -])(?:\+?91[ -]?|0)?[6-9](?:[ -]?\d){9}(?![ -]?\d)(?![\w])/g,
-    otp: /(?<=\b(?:otp|one[- ]?time[- ]?(?:password|passcode|code|pin)|verification[- ]code|passcode)\W{0,12}(?:is\W{1,4})?)\d{4,8}(?![\w])/gi,
-    pan: /(?<![A-Za-z0-9])[A-Z]{5}\d{4}[A-Z](?![A-Za-z0-9])/g,
-    ifsc: /(?<![A-Za-z0-9])[A-Z]{4}0[A-Z0-9]{6}(?![A-Za-z0-9])/g,
-    email: /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g,
-    upi: /(?<![\w.-])[A-Za-z0-9][A-Za-z0-9._-]{1,255}@[A-Za-z][A-Za-z0-9]{1,63}(?![\w@-])(?!\.[A-Za-z0-9])/g,
-  };
+  // Numbers are found as runs of digit groups separated by single spaces or hyphens: a whole token, with no
+  // letters glued on either side and no '@' after it (then it is the handle of a UPI ID or an email). Inside a
+  // run, every stretch of whole groups is tried, longest first, in priority order card > Aadhaar > mobile, so
+  // two numbers printed side by side ("9876543210 9123456789", "Mumbai 400001 9876543210", a card followed by
+  // its expiry) are each found. A stretch never starts or ends inside a group of digits.
+  const NUMBER_RUN = /(?<![\w+])\+?\d+(?:[ -]\d+)*(?![\w@])/g;
+  const NUMBER_TYPES = ['card', 'aadhaar', 'phone'];
+  const MAX_ID_DIGITS = 19;
 
-  const TYPES = Object.keys(CANDIDATES);
+  function findNumbers(src, found) {
+    for (const run of src.matchAll(NUMBER_RUN)) {
+      const groups = [...run[0].matchAll(/\+?\d+/g)].map((g) => ({ start: run.index + g.index, end: run.index + g.index + g[0].length, digits: g[0].replace(/\D/g, '').length }));
+      for (let i = 0; i < groups.length;) {
+        let hit = null;
+        // Stretches of whole groups starting at group i, longest first, never longer than any ID
+        let digits = 0;
+        let last = i;
+        while (last + 1 < groups.length && digits + groups[last].digits + groups[last + 1].digits <= MAX_ID_DIGITS + 4) {
+          digits += groups[last].digits;
+          last++;
+        }
+        for (let j = last; j >= i && !hit; j--) {
+          const value = src.slice(groups[i].start, groups[j].end);
+          const type = NUMBER_TYPES.find((t) => VALIDATE[t](value));
+          if (type) hit = { type, start: groups[i].start, end: groups[j].end, value, next: j + 1 };
+        }
+        if (hit) {
+          found.push({ type: hit.type, start: hit.start, end: hit.end, value: hit.value });
+          i = hit.next;
+        } else {
+          i++;
+        }
+      }
+    }
+  }
+
+  // Other candidate spans in priority order (a span already claimed is not offered to a later type). An OTP is
+  // a 4-8 digit number with an OTP label shortly before it ("OTP: 482913", "Your OTP for login is 482913") or
+  // after it ("482913 is your OTP"), with no other digits in between.
+  const CANDIDATES = [
+    ['otp', /(?<=\b(?:otp|one[- ]?time[- ]?(?:password|passcode|code|pin)|verification[- ]code|passcode)\b[^\d\n]{0,30})(?<![\w])\d{4,8}(?![\w])/gi],
+    ['otp', /(?<![\w])\d{4,8}(?=[^\d\n]{0,24}\b(?:otp|one[- ]?time[- ]?(?:password|passcode|code|pin)|verification[- ]code|passcode)\b)/gi],
+    ['pan', /(?<![A-Za-z0-9])[A-Z]{5}\d{4}[A-Z](?![A-Za-z0-9])/g],
+    ['ifsc', /(?<![A-Za-z0-9])[A-Z]{4}0[A-Z0-9]{6}(?![A-Za-z0-9])/g],
+    ['email', /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g],
+    ['upi', /(?<![\w.-])[A-Za-z0-9][A-Za-z0-9._-]{1,255}@[A-Za-z][A-Za-z0-9]{1,63}(?![\w@-])(?!\.[A-Za-z0-9])/g],
+  ];
+
+  const TYPES = ['card', 'aadhaar', 'phone', 'otp', 'pan', 'ifsc', 'email', 'upi'];
 
   // Validated PII spans in text: [{type, start, end, value}], non-overlapping, sorted by start
   function find(text) {
     const src = String(text ?? '');
     const found = [];
-    for (const type of TYPES) {
-      for (const m of src.matchAll(CANDIDATES[type])) {
+    findNumbers(src, found);
+    for (const [type, regex] of CANDIDATES) {
+      for (const m of src.matchAll(regex)) {
         const start = m.index;
         const end = start + m[0].length;
         if (found.some((f) => start < f.end && f.start < end)) continue;
