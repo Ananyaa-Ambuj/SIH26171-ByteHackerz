@@ -24,15 +24,15 @@ How the five evaluation criteria of problem statement SIH26171 map to the code, 
 *Are the masks complete and tight?*
 
 - **How:** black boxes padded 4 px / 3 px; solid grey masks for faces and profile photos; frames are withheld when the page changes between the scan and the screenshot, so boxes are never drawn on pixels from another moment.
-- **Tested:** the privacy end-to-end test checks that every black box and solid mask in the sent image is solid (98% or more of each mask's interior has the mask colour). A race harness drew PII in magenta on moving and changing pages and counted magenta pixels left in the sent frames (see BENCHMARKS.md).
+- **Tested:** the privacy end-to-end test checks that every black box and solid mask in the sent image is solid (98% or more of each mask's interior has the mask colour). The race test ([`tests/privacy/race.test.mjs`](../tests/privacy/race.test.mjs)) draws PII in magenta on moving and changing pages and checks that no strongly magenta pixels are left in the sent frames.
 - **Measured:** "no PII readable when our own masked frames are run through OCR again" is not yet measured.
 
 ### 4. Client-side resource usage (20%)
 
-- **How:** the DOM pass is plain JavaScript; Florence-2 runs only when images, video, canvas or frames are on screen, and unchanged media reuses the previous result.
-- **Measured:** model download size, model load time from the browser cache and peak memory per browser process are in [`BENCHMARKS.md`](BENCHMARKS.md).
+- **How:** the DOM pass is plain JavaScript; Florence-2 runs only when images, video, canvas or frames are on screen, and unchanged media reuses the previous result. Without WebGPU, the model runs on up to 4 WASM threads.
+- **Measured:** a step without vision work took 453 ms (no media on screen) and 433 ms (media unchanged) median, against 3.40–4.35 s when Florence-2 ran on WebGPU. Model download size, model load time from the browser cache and peak memory per browser process are in [`BENCHMARKS.md`](BENCHMARKS.md).
 
 ### 5. End-to-end latency (15%)
 
-- **Measured:** per-stage times of real agent steps (settle, DOM scan, capture, vision, masking, server, execute) with a mock model are in [`BENCHMARKS.md`](BENCHMARKS.md).
+- **Measured:** per-stage times of real agent steps (settle, DOM scan, capture, vision, masking, server, execute) with a mock model are in [`BENCHMARKS.md`](BENCHMARKS.md). With new images on screen, the Florence-2 pass took 2.96–3.90 s on WebGPU and 29.0 s and 48.1 s on the CPU (4 WASM threads; 93.5 s and 103.1 s on one thread before the threading change).
 - **Not yet measured:** Gemma 4 inference time, so a full step with the real model is not yet measured.

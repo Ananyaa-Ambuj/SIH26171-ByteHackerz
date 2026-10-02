@@ -4,6 +4,8 @@
 
 A browser agent normally streams raw screenshots to a server-side model. Privag AI splits the agent in two: everything that sees raw pixels or raw text runs inside the browser extension, and the server only ever receives a masked frame, a redaction manifest, a masked task and a masked action history. The server plans one action per step; the extension checks it locally and executes it.
 
+The vision model is the expensive part of a step, so it runs only where the DOM pass cannot read: on the images, video, canvas, frames and embedded PDFs on screen, and only when their pixels have changed. A step with no such media skips it; a step whose media is unchanged reuses the earlier result. Measured costs of each case are in [`BENCHMARKS.md`](BENCHMARKS.md#1-conditional-vision).
+
 ---
 
 ## 1. System boundary
@@ -45,6 +47,7 @@ Injected into the task's tab with `chrome.scripting.executeScript`; the side pan
 
 - Runs in a Web Worker through Transformers.js and ONNX Runtime on WebGPU, with a WASM fallback (at load time, and again if a WebGPU inference fails). In Chrome/Brave the worker lives in the offscreen document; Firefox has no offscreen API, so the side panel hosts the same page in a hidden iframe.
 - Looks only at the media regions from Pass 1, cut out of the screenshot onto a white canvas. No media on screen means the pass is skipped; media whose pixels are unchanged since a recent step reuses the cached result.
+- On WASM, ONNX Runtime runs on several threads (up to 4; it takes half the logical cores) only in a cross-origin isolated page. The manifest therefore sets `cross_origin_embedder_policy: require-corp` and `cross_origin_opener_policy: same-origin`. As a result, extension pages can only load cross-origin resources that allow it (CORS or `Cross-Origin-Resource-Policy`); today they load none. Firefox does not support these two keys, so its WASM fallback is expected to stay on one thread.
 - `<OD>` finds people and faces (overlapping boxes merged); `<OCR_WITH_REGION>` reads text lines. A line is PII when it contains a value that passes a validator, or carries a PII label (Aadhaar, PAN, card, phone, email, UPI, IFSC, OTP) next to a value-looking token, which catches values OCR garbled. Inside unscannable media every OCR line is masked. OCR output is limited to 512 tokens; when a crop needs more, the lines after the cut are never reported, so every media area of that crop is blacked out.
 
 ### 2.3 Pass 3: canvas masks (`extension/offscreen.js`)

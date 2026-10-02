@@ -6,9 +6,22 @@ Smart India Hackathon 2026 · Problem statement **SIH26171** (ISRO): *On-device 
 
 Privag AI is a browser extension that lets a server-side vision-language model (Gemma 4) operate web pages for you without seeing your personal data. Before every step it finds PII on your device — in the page's DOM with checksum validators, and inside images and frames with the Florence-2 vision model running in the browser — and masks it in the screenshot, the task text and the action history. The server answers with one JSON action, which the extension checks against a local gate (no typing secrets, no leaving the site, your click before submit or pay) and then executes.
 
+## Vision only where the DOM can't read
+
+The vision model is the slow part of a step, so Privag runs it only when there is something the DOM pass cannot read. The DOM pass reads text and form fields directly and reports where images, video, canvas, frames and embedded PDFs are on screen; Florence-2 looks at those regions and nothing else. With none on screen, the vision pass is skipped. If their pixels have not changed since a recent step, the earlier result is reused.
+
+Measured on our test laptop (GTX 1650, headless Brave, mock model; [details](docs/BENCHMARKS.md#1-conditional-vision)):
+
+| What is on screen | Vision pass | Whole step on the device and server, median |
+| --- | --- | --- |
+| No images, video, canvas or frames | skipped | 453 ms |
+| The same images as a recent step | reused from the cache | 433 ms |
+| New or changed images, WebGPU | ran | 3.40–4.35 s (5 runs) |
+| New or changed images, CPU only (WASM, 4 threads) | ran | 29.4 s and 48.6 s (2 runs) |
+
 ![Architecture as submitted](assets/Privagflowchart.png)
 
-*The architecture diagram from our submission. Two differences in the code: faces get a solid grey mask instead of a blur, and names in free text are not detected yet (on-device NER is planned).*
+*The architecture diagram from our submission. Differences in the code: faces get a solid grey mask instead of a blur; names in free text are not detected yet (on-device NER is planned); Florence-2 runs object detection and OCR with regions, not dense region captioning; and it runs only on media regions, as described above.*
 
 ## How one agent step works
 
@@ -17,7 +30,7 @@ Privag AI is a browser extension that lets a server-side vision-language model (
 1. **Pin and settle.** The task is pinned to the tab it started on; the extension pauses the page's animations and waits until its DOM stops changing (MutationObserver).
 2. **DOM pass** (`extension/content.js`, `extension/validators.js`). Visible text is checked with validators — Aadhaar (Verhoeff), cards (Luhn), PAN, Indian mobile, UPI, IFSC, email, labelled OTPs; a regex match alone never masks. Form fields are classified by purpose (`type`, `autocomplete` tokens such as `one-time-code` and `cc-number`, labels), including autofilled fields. Interactive elements get refs (`e1`, `e2`, …).
 3. **Screenshot** with `chrome.tabs.captureVisibleTab()`. If the page changed around the scan or the capture, both are redone; a page that keeps changing is withheld instead of sent. The raw image never leaves the browser.
-4. **Vision pass** (`client-vision/worker.js`): Florence-2 (ONNX, Transformers.js) in a Web Worker on WebGPU with a WASM fallback, run only on images, video, canvas, frames and embedded PDFs: faces (`<OD>`) and text (`<OCR_WITH_REGION>`).
+4. **Vision pass** (`client-vision/worker.js`): Florence-2 (ONNX, Transformers.js) in a Web Worker on WebGPU with a WASM fallback, run only on images, video, canvas, frames and embedded PDFs: faces (`<OD>`) and text (`<OCR_WITH_REGION>`). Skipped when none is on screen; a cached result is reused when their pixels are unchanged. The extension is cross-origin isolated, so the WASM fallback runs on up to 4 threads.
 5. **Canvas masking** (`extension/offscreen.js`): black boxes for passwords, OTPs, card and ID numbers and text in images; a solid grey mask for faces and profile photos; format-preserving fakes (`user_0001@example.com`, `90000 00001`) for values the agent may need. A redaction manifest `{type, method, source, bbox}` describes every mask and is schema-checked.
 6. **Masked text.** The task and the action history go through the same placeholder vault (memory only).
 7. **Server** (`server/`, Flask): validates the request, asks Gemma 4 (vLLM or Ollama, OpenAI-compatible API) and validates the reply into exactly one action: `{"action": "click|type|scroll|wait|done", "ref", "target", "coordinates", "value"}`.
@@ -67,7 +80,7 @@ Firefox 140 or newer; the same `extension/` folder, no build step.
 1. Open `about:debugging#/runtime/this-firefox` and click **Load Temporary Add-on…**.
 2. Select `extension/manifest.json`. (A temporary add-on is removed when Firefox closes.)
 3. Click the Privag toolbar button to open the sidebar. If Firefox lists the add-on as needing site access, allow it in `about:addons` → Privag AI → Permissions.
-4. Continue from step 4 above. In our Firefox test the vision model ran on WASM, which is much slower than WebGPU (see Measured results).
+4. Continue from step 4 above. In our Firefox test the vision model ran on WASM, which is much slower than WebGPU (see Measured results). Firefox does not support the manifest keys that give the WASM fallback its threads, so we expect it to run on one thread there (not measured).
 
 ### 4. Tests and benchmark
 
@@ -91,7 +104,7 @@ What the code does today, claim by claim, against the idea submission.
 | DOM pass: input types, `autocomplete` tokens (`cc-number`, `one-time-code`, `tel`, `email`, …), visible text with on-screen boxes | Implemented | Text drawn by CSS `::before`/`::after` is not read. |
 | Validators: Aadhaar (Verhoeff), cards (Luhn), PAN, phone, UPI, IFSC; a regex match alone never masks | Implemented | Unit-tested against published vectors. |
 | MutationObserver for dynamic forms, pop-ups, SPA updates | Implemented | Pages that keep changing are withheld, not guessed. |
-| Florence-2 (ONNX, Transformers.js) on WebGPU with WASM fallback, in a Web Worker, only on image, canvas and PDF regions | Implemented | WebGPU in Brave; WASM in our Firefox run. |
+| Florence-2 (ONNX, Transformers.js) on WebGPU with WASM fallback, in a Web Worker, only on image, canvas and PDF regions | Implemented | WebGPU in Brave; WASM in our Firefox run. Skipped when no media is on screen, reused when unchanged (see the top of this page). |
 | On-device NER for names in free text | Planned | Name *fields* are masked; names in free page text and in the task are not. |
 | Canvas masking: black box for passwords, cards and IDs; solid mask (not blur) for faces and profile photos; look-alike values for what the agent must use | Implemented | |
 | Fail-closed: unscanned or uncertain regions masked, or the frame withheld | Implemented | Florence-2 gives no calibrated confidence; uncertainty is handled by rules (see Privacy guarantees). |
@@ -106,22 +119,24 @@ What the code does today, claim by claim, against the idea submission.
 
 ## Measured results
 
-Measured on 2026-10-02 with `bench/bench.mjs`: a laptop with an Intel Core i5-10300H, 7.9 GiB RAM and an NVIDIA GeForce GTX 1650 (4 GB), Windows 11, Brave 1.96 (Chromium 154), headless. Each run was 10 agent steps on WebGPU (two runs) or 3 steps on the WASM fallback, against the real server and a **mock** model. Raw output is in [`bench/results/`](bench/results/); method and every stage are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+Measured on 2026-10-02 with `bench/bench.mjs`: a laptop with an Intel Core i5-10300H (4 cores, 8 threads), 7.9 GiB RAM and an NVIDIA GeForce GTX 1650 (4 GB), Windows 11, Brave 1.96 (Chromium 154), headless, against the real server and a **mock** model. WebGPU runs were 10 agent steps, CPU-only runs 3; each step showed new pixels, so vision ran every time. The figures below are for the current code. The laptop was in normal use during these runs, so they are slower and noisier than our earlier runs of the previous build (2.73 s and 2.83 s per WebGPU vision pass; see [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md#4-earlier-runs-before-the-threading-change)). Raw output is in [`bench/results/`](bench/results/).
 
-| Measure | WebGPU | WASM fallback |
+| Measure | WebGPU (5 runs) | CPU only, WASM fallback (2 runs) |
 | --- | --- | --- |
-| Florence-2 vision pass per step (median) | 2.73 s and 2.83 s (two runs) | 93.5 s |
-| DOM scan per step (median) | 3–4 ms | 4 ms |
-| Screenshot (median) | 64–73 ms | 73 ms |
-| Masking + JPEG (median) | 29–31 ms | 24 ms |
-| Whole step on the device and server, mock model (median) | 3.14 s and 3.25 s | 93.9 s |
-| Model load from the browser cache | 12.4 s and 17.6 s | 10.4 s |
+| Florence-2 vision pass on new images (median per run) | 2.96–3.90 s | 29.0 s and 48.1 s on 4 threads (93.5 s and 103.1 s on one thread, before the threading change) |
+| Whole step on the device and server, mock model (median per run) | 3.40–4.35 s | 29.4 s and 48.6 s (93.9 s and 103.6 s on one thread) |
+| DOM scan per step (median) | 3–6 ms | 2–3 ms |
+| Screenshot (median) | 76–130 ms | 42–66 ms |
+| Masking + JPEG (median) | 37–49 ms | 24–29 ms |
+| Model load from the browser cache | 18.2–52.1 s (12.4 s and 17.6 s in the earlier runs) | 39.2 s and 45.7 s (10.4 s in the earlier run) |
 | Model download (first run, once) | 343.0 MiB | + 227.8 MiB |
-| Peak memory of the web page's tab | 25.1–25.9 MiB | 24.9 MiB |
-| Peak memory of the extension (side panel + model host) | 1004.4–1070.4 MiB | 1320.1 MiB |
-| Peak memory of the browser's GPU process | 1565.1–1571.8 MiB | 31.8 MiB |
+| Peak memory of the web page's tab | 25.9–46.5 MiB | 24.5–38.1 MiB |
+| Peak memory of the extension (side panel + model host) | 775.6–1056.6 MiB | 1302.3–1304.7 MiB |
+| Peak memory of the browser's GPU process | 1537.1–1568.0 MiB | 31.5–31.9 MiB |
 | Gemma 4 time per step | not yet measured | not yet measured |
 | PII detection recall / precision on a labelled set | not yet measured | not yet measured |
+
+The threading change cut the CPU-only vision pass from 93.5 s and 103.1 s to 29.0 s and 48.1 s. On WebGPU it brought no gain: in four alternating pairs of runs, vision medians were 2.96–3.90 s with it and 2.88–3.09 s without, slower with it in 3 of the 4 pairs. That difference is within the noise of a busy machine, but it may be a small cost.
 
 Test results on the same machine: 98 unit tests and 39 server tests pass; the privacy test and the race test pass in Brave. The smoke tests were run from a scratch harness outside the repository: Brave passed 28/28 and headless Firefox 157 passed 36/36, with vision on WASM there.
 
@@ -151,7 +166,8 @@ What the code enforces, and what checks it:
 - **Pages that change faster than every 100 ms** (live feeds, script-driven tickers) are withheld on every step, so the agent stops on them.
 - **Script navigations:** a page script can navigate without a link; the gate cannot see that in advance, so the task pauses when the tab has left the site.
 - **Not yet measured:** detection recall and precision on a labelled set, a full step with Gemma 4, and Chrome/Edge (only Brave was tested).
-- **Firefox speed:** our Firefox run used the WASM fallback, which is far slower than WebGPU.
+- **Firefox speed:** our Firefox run used the WASM fallback, which is far slower than WebGPU, and Firefox does not support the manifest keys that give that fallback its threads.
+- **CPU-only devices:** a step that shows new images still takes tens of seconds without WebGPU (29.0–48.1 s per vision pass on our 4-core laptop).
 
 ## Repository layout
 
