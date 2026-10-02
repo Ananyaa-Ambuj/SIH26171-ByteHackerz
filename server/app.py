@@ -61,7 +61,13 @@ DOM_KEYS = {'elements'}
 
 def _is_num(v):
     # bool is an int in Python but not a number in JavaScript; json.loads also accepts NaN and Infinity
-    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return False
+    try:
+        return math.isfinite(v)
+    except OverflowError:
+        # An integer too large for a double is not a JavaScript number either
+        return False
 
 def _is_int(v):
     # Number.isInteger: 5.0 counts
@@ -153,6 +159,13 @@ MAX_HISTORY_ITEM_CHARS = 4000
 IMAGE_PREFIXES = ('data:image/png;base64,', 'data:image/jpeg;base64,')
 _BASE64 = re.compile(r'[A-Za-z0-9+/]+={0,2}')
 
+def json_body():
+    """The request's JSON body, or None when it is missing, malformed or nested too deeply to parse."""
+    try:
+        return request.get_json(silent=True)
+    except RecursionError:
+        return None
+
 def step_request_error(data):
     """Why a POST /api body cannot be forwarded to the LLM (an error body for a 400), or None if it can."""
     if not isinstance(data, dict):
@@ -179,7 +192,7 @@ def step_request_error(data):
 @app.route('/api', methods=['POST'])
 @app.route('/api/step', methods=['POST'])
 def api():
-    data = request.get_json(silent=True)
+    data = json_body()
     error = step_request_error(data)
     if error:
         return jsonify(error), 400
@@ -215,7 +228,7 @@ def config():
     if denied:
         return denied
     if request.method == 'POST':
-        data = request.get_json(silent=True)
+        data = json_body()
         if not isinstance(data, dict):
             return jsonify({"error": "Config must be a JSON object"}), 400
         unknown = sorted(set(data) - set(llm.CONFIG_KEYS))

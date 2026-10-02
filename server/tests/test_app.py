@@ -256,6 +256,20 @@ class StepValidationTests(ServerTestCase):
             self.assertEqual(res.status_code, 400, kwargs)
             self.assertEqual(res.content_type, 'application/json')
 
+    def test_huge_integers_and_deep_nesting_get_json_400(self):
+        """A 400-digit number in a box or a body nested 100000 levels deep used to crash the server with a 500
+        (OverflowError / RecursionError) where the extension's validator rejects the same frame."""
+        huge = manifest()
+        huge['redacted_regions'][0]['bbox']['x'] = 10 ** 400
+        res, post = self.step(step_body(manifest=huge))
+        self.assertEqual(res.status_code, 400)
+        post.assert_not_called()
+        with mock.patch('llm.requests.post') as post:
+            res = self.client.post('/api', data='[' * 100000, content_type='application/json')
+        self.assertEqual(res.status_code, 400)
+        self.assertTrue(res.is_json)
+        post.assert_not_called()
+
     def test_oversized_body_gets_json_413(self):
         """A 20 MB body used to be accepted and forwarded upstream in full."""
         body = b'{"task": "' + b'a' * (server.MAX_BODY_BYTES + 1) + b'"}'
