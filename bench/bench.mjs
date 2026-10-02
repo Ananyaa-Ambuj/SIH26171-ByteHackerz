@@ -13,6 +13,8 @@
 //       LLM_URL / LLM_MODEL / LLM_API_KEY  a real OpenAI-compatible endpoint instead of the mock
 //                (e.g. http://localhost:11434/v1 and gemma4:31b-it-q4_K_M); without it "vlm" is the mock's time
 //       LABEL    file name label for the results (default: hostname)
+//       BROWSER_ARGS  extra browser flags, space-separated (e.g. --disable-blink-features=WebGPU to measure the
+//                WASM fallback)
 // Use a profile without restored tabs: every restored tab is one more renderer process in the memory figures.
 import http from 'node:http';
 import net from 'node:net';
@@ -29,6 +31,7 @@ const require = createRequire(path.join(REPO, 'tests', 'package.json'));
 const puppeteer = require('puppeteer-core');
 
 const STEPS = Number(process.env.STEPS || 10);
+const extraArgs = (process.env.BROWSER_ARGS || '').split(/\s+/).filter(Boolean);
 const RESULTS = path.join(HERE, 'results');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -145,7 +148,7 @@ async function main() {
     const browser = await puppeteer.launch({
       executablePath: findBrowser(), headless: true, pipe: true, userDataDir: profile,
       enableExtensions: [path.join(REPO, 'extension')], defaultViewport: null,
-      args: ['--no-first-run', '--no-default-browser-check', '--window-size=1280,1000'],
+      args: ['--no-first-run', '--no-default-browser-check', '--window-size=1280,1000', ...extraArgs],
     });
     cleanup.push(async () => browser.close());
     const rootPid = browser.process().pid;
@@ -183,6 +186,18 @@ async function main() {
     const modelLoadMs = Date.now() - loadStart;
     log(`model: ${badge} after ${modelLoadMs} ms`);
     if (!/Ready/.test(badge)) throw new Error(`vision model did not load: ${badge}`);
+    // What the model download put in the extension's Cache Storage (Transformers.js caches every file it fetches)
+    const modelCache = await panel.evaluate(async () => {
+      const files = [];
+      for (const name of await caches.keys()) {
+        const cache = await caches.open(name);
+        for (const request of await cache.keys()) {
+          const blob = await (await cache.match(request)).blob();
+          files.push({ cache: name, file: new URL(request.url).pathname.split('/').slice(-2).join('/'), bytes: blob.size });
+        }
+      }
+      return files;
+    });
     const adapter = await panel.evaluate(async () => {
       try { const a = await navigator.gpu?.requestAdapter(); return a ? { vendor: a.info?.vendor, architecture: a.info?.architecture, description: a.info?.description } : null; } catch { return null; }
     });
@@ -200,8 +215,10 @@ async function main() {
       document.getElementById('taskInput').value = 'Click Next on every step';
       document.getElementById('stepButton').click();
     });
+    // Up to 5 minutes per step: a vision pass on the WASM fallback takes far longer than on WebGPU
     let state;
-    for (let i = 0; i < STEPS * 240; i++) {
+    const runDeadline = Date.now() + STEPS * 300_000;
+    while (Date.now() < runDeadline) {
       state = await panel.evaluate(() => ({ task: Boolean(task), runState, banner: document.getElementById('runBannerText').textContent }));
       if (!state.task || state.runState === 'paused') break;
       await sleep(250);
@@ -220,6 +237,7 @@ async function main() {
       date: new Date().toISOString(),
       hardware: { ...(await hardware()), webgpuAdapter: adapter },
       browser: await browser.version(),
+      browserArgs: extraArgs,
       visionDevice: steps.find((s) => s.device)?.device || null,
       vlm: process.env.LLM_URL ? { url: 'real endpoint (LLM_URL)', model: llmModel } : { url: 'local mock (canned replies)', model: 'mock' },
       requestedSteps: STEPS,
@@ -236,6 +254,8 @@ async function main() {
         extensionProcesses: mib(peak('extension')), gpuProcess: mib(peak('gpu')), browserProcess: mib(peak('browser')), other: mib(peak('other')),
       },
       pageJsHeapUsedMiB: mib(heap.JSHeapUsedSize),
+      modelCacheMiB: mib(modelCache.reduce((sum, f) => sum + f.bytes, 0)),
+      modelCacheFiles: modelCache,
       steps,
       memorySamples: during,
     };
