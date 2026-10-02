@@ -8,8 +8,9 @@ privagInstallObserver();
 
 // MutationObserver bookkeeping: every DOM change, typed value, scroll or resize bumps a sequence number. The
 // side panel waits for the page to be quiet before it scans, and compares the number taken at scan time with
-// the one right after the screenshot: if the page changed in between, it scans again and masks both scans'
-// regions, so content painted between the scan and the capture (pop-ups, toasts, SPA updates) is not missed.
+// the one right after the screenshot: if the page changed in between, it scans and captures again, and withholds
+// the frame when the page never holds still, so content painted between the scan and the capture (pop-ups,
+// toasts, SPA updates) is never sent unmasked.
 function privagInstallObserver() {
     if (window.__privagObserver) return;
     window.__privagMutationSeq = 0;
@@ -33,13 +34,40 @@ function privagObserveRoot(root) {
 }
 
 function privagMutationSeq() {
+    // Records still queued for the observer's callback are changes too
+    if (window.__privagObserver.takeRecords().length) {
+        window.__privagMutationSeq++;
+        window.__privagLastChange = performance.now();
+    }
     return window.__privagMutationSeq;
+}
+
+// CSS animations, transitions and Web Animations move content without any DOM mutation, so the observer cannot
+// see them: they are paused from before the scan until after the screenshot, then resumed. (Once paused and
+// resumed from script, an animation no longer follows later animation-play-state changes in the page's CSS.)
+function privagFreeze() {
+    const running = document.getAnimations().filter((a) => a.playState === 'running');
+    for (const a of running) a.pause();
+    window.__privagPaused = running;
+    return running.length;
+}
+
+function privagUnfreeze() {
+    for (const a of window.__privagPaused || []) {
+        try {
+            a.play();
+        } catch {
+            // the animated element is gone
+        }
+    }
+    window.__privagPaused = [];
 }
 
 // Resolves once nothing changed for quietMs (or after maxMs on pages that never settle, e.g. a ticking clock)
 async function privagWaitForQuiet(quietMs, maxMs) {
     const start = performance.now();
     while (performance.now() - start < maxMs) {
+        privagMutationSeq();
         if (performance.now() - window.__privagLastChange >= quietMs) return { quiet: true, waitedMs: Math.round(performance.now() - start) };
         await new Promise((resolve) => setTimeout(resolve, 25));
     }
@@ -57,40 +85,59 @@ function privagShadowRootOf(el) {
     return el.shadowRoot;
 }
 
-// A stable id per form field for this page, so a value read from a field can be bound to that field
+// The nearest ancestor (or the element itself) matching a selector, crossing shadow-root boundaries, so a link
+// or form around a web component is still found
+function privagClosestComposed(el, selector) {
+    for (let n = el; n; n = n.parentElement || n.getRootNode?.().host) {
+        if (n.matches?.(selector)) return n;
+    }
+    return null;
+}
+
+// A stable id per form field, unique to this page: a value read from a field is bound to that field, and a field
+// on the next page must never inherit that binding (a new document gets a new prefix)
 function privagFieldId(el) {
     window.__privagFieldIds ??= new WeakMap();
     window.__privagFieldCount ??= 0;
+    window.__privagDocId ??= [...crypto.getRandomValues(new Uint32Array(2))].map((n) => n.toString(36)).join('');
     let id = window.__privagFieldIds.get(el);
     if (!id) {
-        id = `f${++window.__privagFieldCount}`;
+        id = `${window.__privagDocId}:f${++window.__privagFieldCount}`;
         window.__privagFieldIds.set(el, id);
     }
     return id;
 }
 
 // What a field is for, from its type, HTML autocomplete token and labels, whatever its value looks like.
-// PAN needs a word match: a plain substring would flag fields like "company".
+// Names are split into words first (otp_code, txtOTP, cardCvv). PAN needs a word match: a plain substring would
+// flag fields like "company"; a bare "PIN" is a postal code in India, so only named PINs count as secrets.
 function privagFieldPurpose(el) {
     const label = el.labels?.[0]?.innerText || '';
-    const hint = `${el.name || ''} ${el.id || ''} ${el.getAttribute('placeholder') || ''} ${el.getAttribute('aria-label') || ''} ${label}`.toLowerCase();
+    const raw = `${el.name || ''} ${el.id || ''} ${el.getAttribute('placeholder') || ''} ${el.getAttribute('aria-label') || ''} ${label}`;
+    const hint = raw.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_.-]+/g, ' ').toLowerCase();
     // The last autocomplete token is the field name ("shipping email", "section-pay cc-number")
     const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase().trim().split(/\s+/).pop();
-    if (el.type === 'password') return 'password';
-    if (autocomplete === 'one-time-code' || /\botp\b|one[\s_-]?time|verification[\s_-]?code|passcode/.test(hint)) return 'otp';
-    if (autocomplete === 'cc-csc' || /\bcvv\b|\bcvc\b|security[\s_-]?code/.test(hint)) return 'cvv';
+    window.__privagPasswordFields ??= new WeakSet();
+    // A password field stays one when the page shows it in plain text ("Show password")
+    if (el.type === 'password' || window.__privagPasswordFields.has(el) || autocomplete === 'current-password' ||
+        autocomplete === 'new-password' || /\b(password|passwd|pwd)\b|\bm ?pin\b|\b(upi|atm|card|security|transaction|txn|login) pin\b/.test(hint)) {
+        window.__privagPasswordFields.add(el);
+        return 'password';
+    }
+    if (autocomplete === 'one-time-code' || /\botp\b|one ?time|verification code|passcode/.test(hint)) return 'otp';
+    if (autocomplete === 'cc-csc' || /\b(cvv|cvc|csc)\b|security code|card code/.test(hint)) return 'cvv';
     if (autocomplete === 'cc-number') return 'card';
     if (/^cc-(name|given-name|family-name)$/.test(autocomplete)) return 'name';
     // Expiry and the other card fields: hidden without a placeholder
     if (autocomplete.startsWith('cc-')) return 'card_meta';
     if (/aadha?ar|adhaa?r/.test(hint)) return 'aadhaar';
-    if (/\bpan\b|pan[\s_-]?(no|num|card)/.test(hint)) return 'pan';
-    if (/\bupi\b|\bvpa\b/.test(hint)) return 'upi';
+    if (/\bpan\b/.test(hint)) return 'pan';
+    if (/\b(upi|vpa)\b/.test(hint)) return 'upi';
     if (/\bifsc\b/.test(hint)) return 'ifsc';
-    if (el.type === 'email' || autocomplete === 'email' || /e-?mail/.test(hint)) return 'email';
+    if (el.type === 'email' || autocomplete === 'email' || /e ?mail/.test(hint)) return 'email';
     if (el.type === 'tel' || autocomplete.startsWith('tel') || /phone|mobile/.test(hint)) return 'phone';
     if (/^(name|given-name|family-name|additional-name|nickname)$/.test(autocomplete) ||
-        /\b(full|first|last|middle)[\s_-]?name\b|\bsurname\b/.test(hint)) return 'name';
+        /\b(full|first|last|middle) ?name\b|\bsurname\b/.test(hint)) return 'name';
     return null;
 }
 
@@ -114,7 +161,8 @@ function privagIsAutofilled(el) {
 
 // Pass 1: deterministic DOM scan. Returns, in screenshot pixels (CSS px x devicePixelRatio, the scale
 // captureVisibleTab captures at):
-//  - regions: PII found in the exact DOM text, form fields and profile photos (OCR misreads don't matter)
+//  - regions: PII found in the exact DOM text, form fields and profile photos (OCR misreads don't matter).
+//    A region with text gets a placeholder; one without text (secrets, free text holding PII) is blacked out.
 //  - elements: interactive elements with refs the model can target (Set-of-Marks)
 //  - mediaRegions: images, video, canvas, frames and CSS background images -- the only places left where PII
 //    can appear outside DOM text, so the only places the vision model still has to look. Frames and embedded
@@ -147,8 +195,8 @@ function privagScan() {
         return true;
     };
 
-    // 0. One pass over every element: find shadow roots (web components hide text and fields from plain
-    //    queries; content scripts may open closed roots too), on-screen visual media and profile photos
+    // 0. One pass over every element: find shadow roots, on-screen visual media and profile photos. Small square
+    //    images are icons; a wide and thin image or canvas (a line of drawn text) is still sent to vision.
     const roots = [document];
     const mediaRegions = [];
     const PROFILE_HINT = /avatar|profile|user[-_ ]?(photo|pic|image|img)|headshot|portrait|\bdp\b/i;
@@ -160,7 +208,7 @@ function privagScan() {
                 privagObserveRoot(shadow);
             }
             const rect = el.getBoundingClientRect();
-            if (rect.width < 24 || rect.height < 24 || !inViewport(rect)) continue;
+            if (rect.width < 8 || rect.height < 8 || (rect.width < 32 && rect.height < 32) || !inViewport(rect)) continue;
             const frame = /^(iframe|frame|embed|object)$/.test(el.localName);
             const picture = /^(img|video|canvas|image)$/.test(el.localName) || getComputedStyle(el).backgroundImage.includes('url(');
             if (!frame && !picture) continue;
@@ -175,8 +223,10 @@ function privagScan() {
     }
 
     // 1. Visible text: text nodes are grouped by their nearest block-level ancestor and validated as one string,
-    //    so a value split across inline elements (<b>2345</b> 6789 0124) is still found; each match is boxed
-    //    exactly with a Range, which may span several nodes and lines.
+    //    so a value split across inline elements (<b>2345</b> 6789 0124) is still found. Line breaks, images and
+    //    inline-block boxes end a group, and every text node is also checked on its own, so values glued to their
+    //    neighbours (<span>Mobile</span><span>9123456789</span>) are found too. Each match is boxed exactly with a
+    //    Range, which may span several nodes and lines.
     const displays = new Map();
     const blockOf = (node) => {
         for (let el = node.parentElement; el; el = el.parentElement) {
@@ -185,75 +235,112 @@ function privagScan() {
                 display = getComputedStyle(el).display;
                 displays.set(el, display);
             }
-            if (!display.startsWith('inline') && display !== 'contents') return el;
+            if (display !== 'inline' && display !== 'contents') return el;
         }
         return node.getRootNode();
     };
-    const textFilter = {
-        acceptNode: (node) => (/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|TEXTAREA|OPTION)$/.test(node.parentNode?.nodeName || '')
-            ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    const walkFilter = {
+        acceptNode: (node) => {
+            if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+            if (/^(script|style|noscript|template|textarea|select|option)$/.test(node.localName)) return NodeFilter.FILTER_REJECT;
+            // Elements that break the flow of text are returned only to end the current group
+            return /^(br|hr|img|input|button|iframe|canvas|video|svg)$/.test(node.localName) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        },
     };
-    const scanGroup = (segments) => {
-        const text = segments.map((s) => s.node.nodeValue).join('');
-        if (text.trim().length < 4) return;
-        const at = (offset, isEnd) => {
-            let pos = 0;
-            for (const s of segments) {
-                const len = s.node.nodeValue.length;
-                if (offset < pos + len || (isEnd && offset === pos + len)) return [s.node, offset - pos];
-                pos += len;
+    const boxMatch = (match, at) => {
+        const range = document.createRange();
+        range.setStart(...at(match.start, false));
+        range.setEnd(...at(match.end, true));
+        // A match spanning several inline boxes yields one rect per box, of different heights: merge the
+        // rects of each line into one box so no strip between them stays unmasked
+        const lines = [];
+        for (const r of range.getClientRects()) {
+            if (r.width <= 0 || r.height <= 0) continue;
+            const line = lines.find((l) => Math.min(l.bottom, r.bottom) - Math.max(l.top, r.top) >= Math.min(l.bottom - l.top, r.height) / 2);
+            if (line) {
+                line.left = Math.min(line.left, r.left);
+                line.top = Math.min(line.top, r.top);
+                line.right = Math.max(line.right, r.right);
+                line.bottom = Math.max(line.bottom, r.bottom);
+            } else {
+                lines.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
             }
-            const last = segments[segments.length - 1].node;
+        }
+        for (const l of lines) {
+            addRegion({ ...l, width: l.right - l.left, height: l.bottom - l.top }, match.type, 'dom_text', match.value);
+        }
+    };
+    // Text shown in capitals by CSS is checked in capitals too (a PAN typed in lowercase still shows as a PAN)
+    const asShown = (text, block) => {
+        if (!(block instanceof Element) || getComputedStyle(block).textTransform !== 'uppercase') return text;
+        const upper = text.toUpperCase();
+        return upper.length === text.length ? upper : text;
+    };
+    const scanGroup = (nodes, block) => {
+        const text = asShown(nodes.map((n) => n.nodeValue).join(''), block);
+        if (text.trim().length < 4) return;
+        const starts = [];
+        let pos = 0;
+        for (const n of nodes) {
+            starts.push(pos);
+            pos += n.nodeValue.length;
+        }
+        const at = (offset, isEnd) => {
+            for (let k = 0; k < nodes.length; k++) {
+                const len = nodes[k].nodeValue.length;
+                if (offset < starts[k] + len || (isEnd && offset === starts[k] + len)) return [nodes[k], offset - starts[k]];
+            }
+            const last = nodes[nodes.length - 1];
             return [last, last.nodeValue.length];
         };
-        for (const match of PrivagValidators.find(text)) {
-            const range = document.createRange();
-            range.setStart(...at(match.start, false));
-            range.setEnd(...at(match.end, true));
-            // A match spanning several inline boxes yields one rect per box, of different heights: merge the
-            // rects of each line into one box so no strip between them stays unmasked
-            const lines = [];
-            for (const r of range.getClientRects()) {
-                if (r.width <= 0 || r.height <= 0) continue;
-                const line = lines.find((l) => Math.min(l.bottom, r.bottom) - Math.max(l.top, r.top) >= Math.min(l.bottom - l.top, r.height) / 2);
-                if (line) {
-                    line.left = Math.min(line.left, r.left);
-                    line.top = Math.min(line.top, r.top);
-                    line.right = Math.max(line.right, r.right);
-                    line.bottom = Math.max(line.bottom, r.bottom);
-                } else {
-                    lines.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+        const matches = PrivagValidators.find(text);
+        if (nodes.length > 1) {
+            nodes.forEach((n, k) => {
+                for (const m of PrivagValidators.find(text.slice(starts[k], starts[k] + n.nodeValue.length))) {
+                    const shifted = { ...m, start: m.start + starts[k], end: m.end + starts[k] };
+                    if (!matches.some((g) => shifted.start < g.end && g.start < shifted.end)) matches.push(shifted);
                 }
-            }
-            for (const l of lines) {
-                addRegion({ ...l, width: l.right - l.left, height: l.bottom - l.top }, match.type, 'dom_text', match.value);
-            }
+            });
         }
+        for (const match of matches) boxMatch(match, at);
     };
     for (const root of roots) {
-        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, textFilter);
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, walkFilter);
         let group = [];
         let groupBlock = null;
+        const flush = () => {
+            if (group.length) scanGroup(group, groupBlock);
+            group = [];
+        };
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-            const block = blockOf(node);
-            if (block !== groupBlock && group.length) {
-                scanGroup(group);
-                group = [];
+            if (node.nodeType !== Node.TEXT_NODE) {
+                flush();
+                continue;
             }
+            const block = blockOf(node);
+            if (block !== groupBlock) flush();
             groupBlock = block;
-            group.push({ node });
+            group.push(node);
         }
-        if (group.length) scanGroup(group);
+        flush();
     }
 
-    // 2. Form fields: values are not DOM text, so box the whole field. Purpose first (secrets are never read),
-    //    then the value's own validated type (so the same value gets the same fake in any field), then purpose.
+    // 2. Form fields: values are not DOM text, so box the whole field. Secret purposes are never read. A value that
+    //    is wholly one PII value, or sits in a field with a purpose, gets a placeholder; any other text that holds
+    //    PII (a note with a phone number and an email) is blacked out, so none of it rides along in a fake.
+    //    Buttons showing PII in their label, and empty fields showing it in their placeholder, are blacked out too.
     const redactedFields = new Set();
     for (const root of roots) {
         for (const el of root.querySelectorAll('input, textarea, select')) {
-            if (/^(hidden|submit|button|reset|image|checkbox|radio|file|range|color)$/.test(el.type)) continue;
+            const button = /^(submit|button|reset)$/.test(el.type);
+            if (!button && /^(hidden|image|checkbox|radio|file|range|color)$/.test(el.type)) continue;
             const rect = el.getBoundingClientRect();
             if (!inViewport(rect)) continue;
+            if (button) {
+                const found = PrivagValidators.find(el.value);
+                if (found.length) addRegion(rect, found[0].type, 'dom_field', undefined, privagFieldId(el));
+                continue;
+            }
             const purpose = privagFieldPurpose(el);
             const autofilled = privagIsAutofilled(el);
             let value = el.value;
@@ -262,16 +349,28 @@ function privagScan() {
                 const shown = el.multiple || el.size > 1 ? [...el.options] : [...el.selectedOptions];
                 value = shown.map((o) => o.text).join(' ');
             }
-            if (!value && !autofilled) continue;
-            let type;
+            if (!value && !autofilled) {
+                const found = PrivagValidators.find(el.getAttribute('placeholder') || '');
+                if (found.length && addRegion(rect, found[0].type, 'dom_field', undefined, privagFieldId(el))) redactedFields.add(el);
+                continue;
+            }
+            let type = null;
+            let text;
             if (privagIsSecretPurpose(purpose)) {
                 type = purpose;
+            } else if (PrivagValidators.typeOf(value)) {
+                type = PrivagValidators.typeOf(value);
+                text = value;
+            } else if (purpose) {
+                type = purpose;
+                text = value;
+            } else if (autofilled) {
+                type = 'autofill';
             } else {
-                type = PrivagValidators.typeOf(value) || PrivagValidators.find(value)[0]?.type || purpose || (autofilled ? 'autofill' : null);
+                type = PrivagValidators.find(value)[0]?.type || null;
             }
             if (!type) continue;
-            const secret = privagIsSecretPurpose(type) || type === 'autofill';
-            if (addRegion(rect, type, 'dom_field', secret ? undefined : value, privagFieldId(el))) redactedFields.add(el);
+            if (addRegion(rect, type, 'dom_field', text, privagFieldId(el))) redactedFields.add(el);
         }
     }
 
@@ -310,11 +409,15 @@ function privagScan() {
     }
     window.__privagRefs = refs;
 
+    const seq = privagMutationSeq();
     return {
         regions,
         elements,
         mediaRegions,
-        seq: window.__privagMutationSeq,
+        seq,
+        // How long the DOM had been still when the scan began: a change made just before the scan may not be on
+        // screen yet, so the boxes would describe a page the screenshot does not show
+        quietBeforeMs: Math.round(start - window.__privagLastChange),
         scanMs: Math.round(performance.now() - start),
     };
 }
@@ -397,27 +500,40 @@ function privagResolveTarget(data) {
     return { el, point, ref, missing };
 }
 
-// A plain description of the action's target, for the side panel's gate (action-gate.js) and vault binding
+// A plain description of the action's target, for the side panel's gate (action-gate.js) and vault binding.
+// A click on an icon or text inside a button counts as a click on that button, and a click on a label as a click
+// on its control. A field's type comes only from its purpose (type, autocomplete, labels), never from its current
+// value, so the model cannot turn a search box into an "email field" by typing an email into it first.
 function privagDescribeTarget(data) {
     const { el, missing } = privagResolveTarget(data);
     if (!el) return { found: false, missing };
     const field = el.localName === 'input' || el.localName === 'textarea' || el.localName === 'select';
     const editable = el.isContentEditable || el.localName === 'textarea' || el.localName === 'select' ||
         (el.localName === 'input' && !/^(hidden|submit|button|reset|image|checkbox|radio|file|range|color)$/.test(el.type));
-    const link = el.closest?.('a[href], area[href]');
-    const form = el.form || null;
-    const submitsForm = Boolean(form) && ((el.localName === 'button' && (el.getAttribute('type') || 'submit').toLowerCase() === 'submit') ||
-        (el.localName === 'input' && /^(submit|image)$/.test(el.type)));
+    const link = privagClosestComposed(el, 'a[href], area[href]');
+    const SUBMITTER = 'button, input[type="submit"], input[type="image"]';
+    const labelControl = privagClosestComposed(el, 'label')?.control;
+    const submitter = privagClosestComposed(el, SUBMITTER) || (labelControl?.matches?.(SUBMITTER) ? labelControl : null);
+    // .type reads 'submit' for a button without a valid type attribute
+    const submitsForm = Boolean(submitter?.form) && (submitter.type === 'submit' || submitter.type === 'image');
+    // A button's formAction is the page URL when it has no formaction attribute, so the form's action decides then
+    const formAction = submitsForm ? (submitter.hasAttribute('formaction') ? submitter.formAction : submitter.form.action) : null;
+    // Any other button inside a form that holds values may submit it from script
+    const clickable = submitter || privagClosestComposed(el, 'button, [role="button"], input[type="button"]');
+    const ownerForm = clickable ? (clickable.form || privagClosestComposed(clickable, 'form')) : null;
+    const inFilledForm = !submitsForm && Boolean(ownerForm) && [...ownerForm.elements].some((f) =>
+        /^(input|textarea|select)$/.test(f.localName) && !/^(hidden|submit|button|reset|image|checkbox|radio|file|range|color)$/.test(f.type) && f.value);
     return {
         found: true,
         tag: el.localName,
         editable,
-        fieldType: field ? (privagFieldPurpose(el) || PrivagValidators.typeOf(el.value)) : null,
+        fieldType: field ? privagFieldPurpose(el) : null,
         fieldId: field ? privagFieldId(el) : null,
         href: link ? link.href : null,
         submitsForm,
-        formAction: submitsForm ? (el.formAction || form.action || location.href) : null,
-        label: (el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+        formAction,
+        inFilledForm,
+        label: ((clickable || el).getAttribute('aria-label') || (clickable || el).innerText || (clickable || el).value || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 80),
     };
 }
 
