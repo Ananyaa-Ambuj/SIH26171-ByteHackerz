@@ -91,6 +91,8 @@ cd tests && npm install && npm run test:privacy               # privacy end-to-e
 node bench/bench.mjs                                          # per-stage latency and peak memory -> bench/results/
 ```
 
+The benchmark's options (`STEPS`, `PHOTO`, `BROWSER_ARGS`, a real model via `LLM_URL`) are described at the top of `bench/bench.mjs` and in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+
 [`tests/README.md`](tests/README.md) explains each suite and its environment variables.
 
 ## Feature status
@@ -138,7 +140,7 @@ Measured on 2026-10-02 with `bench/bench.mjs`: a laptop with an Intel Core i5-10
 
 The threading change cut the CPU-only vision pass from 93.5 s and 103.1 s to 29.0 s and 48.1 s. On WebGPU it brought no gain: in four alternating pairs of runs, vision medians were 2.96–3.90 s with it and 2.88–3.09 s without, slower with it in 3 of the 4 pairs. That difference is within the noise of a busy machine, but it may be a small cost.
 
-Test results on the same machine: 98 unit tests and 39 server tests pass; the privacy test and the race test pass in Brave. The smoke tests were run from a scratch harness outside the repository: Brave passed 28/28 and headless Firefox 157 passed 36/36, with vision on WASM there.
+Test results on the same machine, with the current code: 98 unit tests and 39 server tests pass; the privacy test and the race test pass in Brave. The smoke tests were run from a scratch harness outside the repository: Brave passed 28/28; headless Firefox 157 passed 36/36 with vision on WASM, in a run made before the threading change (Firefox has since been uninstalled from the test machine).
 
 ## Privacy guarantees
 
@@ -155,7 +157,7 @@ What the code enforces, and what checks it:
   - the tab changes during capture;
   - the manifest fails its schema.
 
-  Text inside frames and embedded PDFs, which the DOM pass cannot read, is blacked out line by line, and whole media areas are blacked out when OCR output was cut off. *Checked by:* the race harness (live feed, script-driven ticker, CSS animation, dense frame), the privacy test.
+  Text inside frames and embedded PDFs, which the DOM pass cannot read, is blacked out line by line, and whole media areas are blacked out when OCR output was cut off. *Checked by:* the race test (live feed, script-driven ticker, CSS animation, dense frame), the privacy test.
 - **Server.** It listens on 127.0.0.1 with the debugger off. It sends no CORS headers, so web pages cannot read its answers. Its config endpoint answers only local requests and never returns the API key. Every request and every model reply is validated. *Checked by:* 39 server unit tests.
 
 ## Known limitations
@@ -176,7 +178,7 @@ What the code enforces, and what checks it:
 | `extension/` | the WebExtension: side panel orchestrator, content script, validators, action gate, vault, offscreen canvas masking, Florence-2 worker bundle |
 | `client-vision/` | source of the vision worker (`worker.js`, `ocr-pii.js`) and a standalone test page |
 | `server/` | Flask server, default config, dashboard, unit tests |
-| `tests/` | unit tests and the privacy end-to-end test |
+| `tests/` | unit tests, the privacy end-to-end test and the race test |
 | `bench/` | benchmark script, fixture page and raw results |
 | `docs/` | architecture, server API, benchmarks, evaluation mapping |
 

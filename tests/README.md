@@ -94,4 +94,7 @@ copyright; author died in 1968).
 ## Benchmark (`../bench/bench.mjs`)
 
 Not a test: it measures per-stage latency and peak memory over real agent steps and writes the raw results to
-`bench/results/`. See the main README for how it is run and what it reports.
+`bench/results/`. It takes the same `BROWSER`, `PRIVAG_PYTHON`, `PROFILE_DIR` and `MODEL_TIMEOUT_S` variables, plus
+`STEPS`, `PHOTO` (`moving`, `still` or `none`: vision runs every step, once then from the cache, or never),
+`BROWSER_ARGS` (`--disable-gpu` forces the WASM fallback), `LABEL` and `LLM_URL`/`LLM_MODEL`/`LLM_API_KEY` for a real
+model. [`docs/BENCHMARKS.md`](../docs/BENCHMARKS.md) describes the method and every committed run.
