@@ -25,6 +25,8 @@ Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · server API: [`docs/AP
 
 ## Run it
 
+**Two-minute check, no server and no model needed:** load the extension (section 2 or 3 below), open any page with personal data on it, open the Privag side panel and press **Sanitize Only**. The panel shows the masked frame exactly as the agent would send it, and the audit log lists what was masked. Running the agent itself needs the server (section 1) and a vision-language model behind it; until the server answers, the side panel shows how to start it.
+
 ### 1. Server (Python 3.11+)
 
 ```powershell
@@ -34,7 +36,7 @@ python -m venv .venv
 .\.venv\Scripts\python app.py
 ```
 
-On Linux/macOS use `.venv/bin/python`. The server listens on `http://127.0.0.1:5000` with the debugger off. Settings come from `server/config.default.json`, overridden by the dashboard at `http://127.0.0.1:5000/` (local only; saved to the git-ignored `server/config.json`) and by environment variables:
+On Linux/macOS use `.venv/bin/python`. The server listens on `http://127.0.0.1:5000` with the debugger off and opens its setup page in your browser, where you enter the model's OpenAI-compatible URL (and a key, if the endpoint needs one). Settings come from `server/config.default.json`, overridden by the dashboard at `http://127.0.0.1:5000/` (local only; saved to the git-ignored `server/config.json`) and by environment variables:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -44,6 +46,7 @@ On Linux/macOS use `.venv/bin/python`. The server listens on `http://127.0.0.1:5
 | `PRIVAG_LLM_TIMEOUT` | `600` | seconds to wait for the model |
 | `PRIVAG_HOST` / `PRIVAG_PORT` | `127.0.0.1` / `5000` | where the server listens (`0.0.0.0` to serve a LAN) |
 | `PRIVAG_DEBUG` | off | `1` enables Flask debug mode (never on a shared network) |
+| `PRIVAG_OPEN_DASHBOARD` | `1` | the server opens its setup page in your browser when it starts; `0` skips that |
 
 `server/.env.example` documents the same variables; the server reads the process environment and does not load `.env` files. To serve Gemma 4 with Ollama: `ollama pull gemma4:31b-it-q4_K_M`, then start the server as above.
 

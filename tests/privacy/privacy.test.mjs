@@ -105,7 +105,7 @@ test('no raw PII leaves the device during an agent step', { timeout: 30 * 60 * 1
   const flaskPort = await freePort();
   const flask = spawn(findPython(), ['app.py'], {
     cwd: path.join(REPO, 'server'),
-    env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_LLM_URL: `http://127.0.0.1:${llm.address().port}/v1`, PRIVAG_LLM_MODEL: 'mock', PRIVAG_LLM_API_KEY: '' },
+    env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_LLM_URL: `http://127.0.0.1:${llm.address().port}/v1`, PRIVAG_LLM_MODEL: 'mock', PRIVAG_LLM_API_KEY: '', PRIVAG_OPEN_DASHBOARD: '0' },
   });
   let flaskLog = '';
   flask.stdout.on('data', (d) => (flaskLog += d));
@@ -168,6 +168,8 @@ test('no raw PII leaves the device during an agent step', { timeout: 30 * 60 * 1
     document.getElementById('taskInput').value = goal;
     document.getElementById('stepButton').click();
   }, TASK);
+  // Run Agent first checks that the server answers, then creates the task
+  for (let i = 0; i < 100 && !(await panel.evaluate(() => Boolean(task))); i++) await sleep(100);
   let state;
   for (let i = 0; i < 240; i++) {
     state = await panel.evaluate(() => ({ task: Boolean(task), runState, banner: document.getElementById('runBannerText').textContent }));

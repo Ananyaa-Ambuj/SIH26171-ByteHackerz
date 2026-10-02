@@ -48,6 +48,7 @@ The effective config is built per request, in this order (later wins):
 | `PRIVAG_HOST` | `127.0.0.1` | Interface to listen on. `0.0.0.0` makes `/api` reachable from other machines; the dashboard and `/api/config` still answer only to this machine. |
 | `PRIVAG_PORT` | `5000` | Port to listen on. Set the same URL in the extension's side panel. |
 | `PRIVAG_DEBUG` | off | `1` turns on the Werkzeug debugger (tracebacks with source, interactive console). Development only. |
+| `PRIVAG_OPEN_DASHBOARD` | `1` | The server opens its setup page in the default browser once it accepts connections; `0` skips that. |
 
 The server reads only the process environment; it does not load `.env` files (`server/.env.example` documents every variable). Settings never live in `server/static/`, which Flask serves publicly.
 

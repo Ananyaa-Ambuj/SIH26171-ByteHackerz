@@ -137,7 +137,7 @@ async function main() {
     const flaskPort = await freePort();
     const flask = spawn(findPython(), ['app.py'], {
       cwd: path.join(REPO, 'server'),
-      env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_LLM_URL: llmUrl, PRIVAG_LLM_MODEL: llmModel, PRIVAG_LLM_API_KEY: process.env.LLM_API_KEY || '' },
+      env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_LLM_URL: llmUrl, PRIVAG_LLM_MODEL: llmModel, PRIVAG_LLM_API_KEY: process.env.LLM_API_KEY || '', PRIVAG_OPEN_DASHBOARD: '0' },
     });
     cleanup.push(async () => { flask.kill(); });
     for (let i = 0; i < 100; i++) {
@@ -215,6 +215,8 @@ async function main() {
       document.getElementById('taskInput').value = 'Click Next on every step';
       document.getElementById('stepButton').click();
     });
+    // Run Agent first checks that the server answers, then creates the task
+    for (let i = 0; i < 100 && !(await panel.evaluate(() => Boolean(task))); i++) await sleep(100);
     // Up to 5 minutes per step: a vision pass on the WASM fallback takes far longer than on WebGPU
     let state;
     const runDeadline = Date.now() + STEPS * 300_000;
