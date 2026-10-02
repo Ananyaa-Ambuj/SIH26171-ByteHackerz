@@ -96,6 +96,25 @@ describe('maskText (outgoing text)', () => {
     assert.equal(m.maskText('code order1234x', 'task'), 'code order1234x');
   });
 
+  test('a short vault value never claims part of a longer PII token, which would leave the rest of it readable', () => {
+    // Regression (adversarial review M6): 'Rahul' in the vault used to win over the email around it
+    const m = new PIIMasker();
+    m.maskText('My name is {{Rahul}}', 'task');
+    assert.equal(m.maskText('Contact Rahul.Sharma@example.org today', 'page'), 'Contact user_0001@example.com today');
+    const m2 = new PIIMasker();
+    m2.maskText('pin {{2345}}', 'task');
+    assert.equal(m2.maskText('Aadhaar 2345 6789 0124', 'page'), 'Aadhaar 0000 0000 0001');
+  });
+
+  test('digits are swapped in place only in a number-shaped value, so other text in a field never rides along', () => {
+    // Regression (adversarial review H2): a form field holding a phone number and an email
+    const m = new PIIMasker();
+    const fake = m.getFakeValue('Call 9876543210 at the gate, or mail ravi.kumar@gmail.com', 'phone', 'field:f1');
+    assert.equal(fake, '9000000001');
+    assert.equal(m.getFakeValue('+91 98765 43210', 'phone', 'page'), '9000000001');
+    assert.equal(m.getFakeValue('2345-6789-0124', 'aadhaar', 'page'), '0000-0000-0001');
+  });
+
   test('a 1-3 character vault value is not rewritten elsewhere (regression: a short {{a}} rewrote every later string)', () => {
     const m = new PIIMasker();
     assert.match(m.maskText('Initials {{a}}, code {{ab7}}', 'task'), /^Initials SECRET_\d{4}, code SECRET_\d{4}$/);
@@ -135,6 +154,17 @@ describe('resolve (fake -> real, right before typing)', () => {
     for (const target of [{ fieldId: 'f2', fieldType: 'email' }, { fieldId: 'f2', fieldType: null }, { fieldId: 'f2' }, null]) {
       assert.deepEqual(m.resolve(fake, target), { text: fake, blocked: [{ fake, type: 'upi' }] }, JSON.stringify(target));
     }
+  });
+
+  test('a fake retyped with other separators or in another case is still recognised (else the placeholder lands in the form)', () => {
+    // Regression (adversarial review L10)
+    const m = new PIIMasker();
+    const phone = m.getFakeValue('98765 43210', 'phone', 'task');
+    const email = m.getFakeValue('ravi@gmail.com', 'email', 'task');
+    assert.equal(m.resolve(phone.replace(' ', '-'), { fieldType: 'phone' }).text, '98765 43210');
+    assert.equal(m.resolve(email.toUpperCase(), { fieldType: 'email' }).text, 'ravi@gmail.com');
+    // Recognised but in the wrong kind of field: still blocked
+    assert.equal(m.resolve(email.toUpperCase(), { fieldType: 'phone' }).blocked.length, 1);
   });
 
   test('a numeric fake resolves with or without its separators, because the model may retype it either way', () => {

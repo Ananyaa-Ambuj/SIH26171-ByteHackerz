@@ -68,8 +68,11 @@ globalThis.PIIMasker ??= class PIIMasker {
       this.vault.set(key, canonical);
     }
 
+    // Digits are swapped in place only in a value that is nothing but digits and separators, so no other text
+    // (an email in the same form field, a word) can ride along inside a fake
     let i = 0;
-    const fake = numeric && digits.length === canonical.length ? real.replace(/\d/g, () => canonical[i++]) : canonical;
+    const numberShaped = /^[\d\s()+.-]+$/.test(real);
+    const fake = numeric && numberShaped && digits.length === canonical.length ? real.replace(/\d/g, () => canonical[i++]) : canonical;
     this.reverseVault.set(fake, real);
     if (fake !== canonical) this.reverseVault.set(canonical, digits);
     for (const shown of new Set([fake, canonical])) {
@@ -80,9 +83,9 @@ globalThis.PIIMasker ??= class PIIMasker {
     return fake;
   }
 
-  // Outgoing text: {{...}}-marked secrets, values already in the vault, and newly detected (validated) PII all
-  // become fakes. Fakes already present are kept as they are, and overlapping matches are resolved by
-  // priority, so nothing is faked twice or split between two types.
+  // Outgoing text: {{...}}-marked secrets, fakes already present, newly detected (validated) PII and other values
+  // already in the vault all become fakes, claimed in that order. Fakes are never faked again, and a validated
+  // span wins over a shorter vault value inside it, so no part of a longer token is left behind.
   maskText(text, origin = 'page') {
     const src = String(text ?? '');
     const claims = [];
@@ -101,11 +104,6 @@ globalThis.PIIMasker ??= class PIIMasker {
       const fake = this.getFakeValue(secret, 'password', origin);
       claim(m.index, m.index + m[0].length, () => fake);
     });
-    for (const [fake, real] of [...this.reverseVault].sort((a, b) => b[1].length - a[1].length)) {
-      if (real.length < PIIMasker.MIN_REAL_LENGTH) continue;
-      const type = this.bindings.get(fake)?.type || 'text';
-      find(whole(real), (m) => claim(m.index, m.index + real.length, () => this.getFakeValue(real, type, origin)));
-    }
     for (const fake of this.reverseVault.keys()) {
       find(whole(fake), (m) => claim(m.index, m.index + fake.length, () => fake));
     }
@@ -116,6 +114,11 @@ globalThis.PIIMasker ??= class PIIMasker {
     find(/(?<![A-Za-z0-9])[A-Za-z]{5}\d{4}[A-Za-z](?![A-Za-z0-9])/g, (m) => {
       if (PrivagValidators.isPAN(m[0].toUpperCase())) claim(m.index, m.index + m[0].length, () => this.getFakeValue(m[0], 'pan', origin));
     });
+    for (const [fake, real] of [...this.reverseVault].sort((a, b) => b[1].length - a[1].length)) {
+      if (real.length < PIIMasker.MIN_REAL_LENGTH) continue;
+      const type = this.bindings.get(fake)?.type || 'text';
+      find(whole(real), (m) => claim(m.index, m.index + real.length, () => this.getFakeValue(real, type, origin)));
+    }
 
     claims.sort((a, b) => a[0] - b[0]);
     let out = '';
@@ -129,25 +132,43 @@ globalThis.PIIMasker ??= class PIIMasker {
 
   // Text the model wants typed into `target` ({fieldId, fieldType}): each whole fake goes back to its real value
   // only where it belongs -- the field it was read from, or, for a value from the task or the page text, a
-  // field whose detected purpose matches its type. Any other fake is reported in `blocked` and the caller must
+  // field whose detected purpose matches its type. A fake is recognised however the model retypes it: numbers
+  // with any spaces or hyphens, letters in any case. Any other fake is reported in `blocked` and the caller must
   // not type at all (typing the fake would put a placeholder into a real form).
   resolve(text, target) {
     const src = String(text ?? '');
     const blocked = [];
-    if (this.reverseVault.size === 0) return { text: src, blocked };
-    const alternatives = [...this.reverseVault.keys()]
-      .sort((a, b) => b.length - a.length)
-      .map(PIIMasker.escape)
-      .join('|');
-    const out = src.replace(new RegExp(`(?<!\\w)(?:${alternatives})(?!\\w)`, 'g'), (fake) => {
+    const claims = [];
+    // Longest fakes first, so the spaced form of a number wins over its digits-only form
+    for (const fake of [...this.bindings.keys()].sort((a, b) => b.length - a.length)) {
       const binding = this.bindings.get(fake);
-      const fromField = target?.fieldId && binding.origins.has(`field:${target.fieldId}`);
-      const freeValue = binding.origins.has('task') || binding.origins.has('page');
-      if (fromField || (freeValue && target?.fieldType === binding.type)) return this.reverseVault.get(fake);
-      blocked.push({ fake, type: binding.type });
-      return fake;
-    });
-    return { text: out, blocked };
+      const pattern = PIIMasker.NUMERIC.has(binding.type)
+        ? fake.replace(/\D/g, '').split('').join('[\\s-]?')
+        : PIIMasker.escape(fake);
+      for (const m of src.matchAll(new RegExp(`(?<![\\w])${pattern}(?![\\w])`, 'gi'))) {
+        const [start, end] = [m.index, m.index + m[0].length];
+        if (claims.some((c) => start < c.end && c.start < end)) continue;
+        const fromField = target?.fieldId && binding.origins.has(`field:${target.fieldId}`);
+        const freeValue = binding.origins.has('task') || binding.origins.has('page');
+        if (fromField || (freeValue && target?.fieldType === binding.type)) {
+          // A number retyped without separators is restored without them too
+          const real = this.reverseVault.get(fake);
+          const bare = PIIMasker.NUMERIC.has(binding.type) && !/[\s-]/.test(m[0]);
+          claims.push({ start, end, text: bare ? real.replace(/\D/g, '') : real });
+        } else {
+          claims.push({ start, end, text: m[0] });
+          blocked.push({ fake, type: binding.type });
+        }
+      }
+    }
+    claims.sort((a, b) => a.start - b.start);
+    let out = '';
+    let pos = 0;
+    for (const c of claims) {
+      out += src.slice(pos, c.start) + c.text;
+      pos = c.end;
+    }
+    return { text: out + src.slice(pos), blocked };
   }
 };
 
