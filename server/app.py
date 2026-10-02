@@ -5,7 +5,11 @@ import llm
 import math
 import os
 import re
+import socket
 import sys
+import threading
+import time
+import webbrowser
 
 app = Flask(__name__)
 # A sanitized frame is a JPEG data URL; anything far larger is not a frame and would only be forwarded upstream
@@ -276,6 +280,22 @@ def too_large(e):
 def internal_error(e):
     return jsonify({"error": "Internal server error"}), 500
 
+def open_dashboard_when_ready(host, port):
+    """Opens the setup page in the default browser as soon as the server accepts connections, so a first-time user
+    lands on it without looking for the URL. The page answers on this machine only, hence a loopback address."""
+    local = "[::1]" if host == "::1" else "127.0.0.1"
+    for _ in range(50):
+        try:
+            socket.create_connection((local.strip("[]"), port), timeout=1).close()
+            break
+        except OSError:
+            time.sleep(0.2)
+    else:
+        return
+    url = f"http://{local}:{port}/"
+    print(f"Opening the setup page in your browser: {url} (set PRIVAG_OPEN_DASHBOARD=0 to skip)", flush=True)
+    webbrowser.open(url)
+
 if __name__ == "__main__":
     # Loopback only and no debugger by default: debug mode shows source and paths on every error and offers a
     # console, and 0.0.0.0 would hand both (and the API) to everyone on the network
@@ -298,6 +318,9 @@ if __name__ == "__main__":
 
     shown_host = f"[{host}]" if ":" in host else host
     print(f"Privag AI server listening on http://{shown_host}:{port}", flush=True)
+    # Once only: with PRIVAG_DEBUG=1 the reloader runs this file again in a child process (WERKZEUG_RUN_MAIN)
+    if os.environ.get("PRIVAG_OPEN_DASHBOARD", "1") != "0" and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        threading.Thread(target=open_dashboard_when_ready, args=(host, port), daemon=True).start()
     # load_dotenv=False: settings come only from the process environment (see .env.example), even when
     # python-dotenv happens to be installed
     app.run(host=host, port=port, debug=debug, load_dotenv=False)
