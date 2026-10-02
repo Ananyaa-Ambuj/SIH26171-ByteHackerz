@@ -28,6 +28,7 @@ work, because the test runner treats a bare path as a file. Checked with Node 24
 | `unit/action-gate.test.mjs` | `extension/action-gate.js` | No typing into password/OTP/CVV fields, no off-site navigation, a user click before submit or pay, fail closed when the start URL is unknown. |
 | `unit/redaction-manifest.test.mjs` | `extension/redaction-manifest.js` | The manifest sent with each frame only carries allow-listed keys, valid methods and sources, and well-formed boxes. |
 | `unit/pii-masker.test.mjs` | `extension/pii-masker.js` | Consistent, format-preserving, clearly synthetic fakes; outgoing text masking; a fake is turned back into the real value only in the field it came from or a field of the same type. |
+| `unit/ocr-pii.test.mjs` | `client-vision/ocr-pii.js` | An OCR line is masked when a validator accepts a value in it, or when a PII label sits next to a value OCR may have garbled; bare labels stay readable; overlapping face boxes merge. |
 
 Every test name says why the rule matters, so a failing test reads as the business rule that broke.
 
@@ -68,6 +69,18 @@ npm run test:privacy
 | `MODEL_TIMEOUT_S` | how long to wait for the vision model to load | `1200` |
 
 The first run on a fresh profile downloads the Florence-2 weights from Hugging Face.
+
+## Race test (`privacy/race.test.mjs`)
+
+Also run by `npm run test:privacy` (the two run one after the other). A scan's boxes are only valid for the pixels
+of the same moment, so a frame whose page changed between the scan and the screenshot must be withheld. PII on its
+test pages is drawn in pure magenta, and the test counts strongly magenta pixels left in every frame that is sent:
+
+- a script-driven ticker that moves a phone number every animation frame: withheld (or sent with no magenta);
+- a CSS slide-in toast with a phone number, sampled at six moments of its animation: sent, with no magenta
+  (animations are paused for the capture);
+- a feed adding a phone number every 30 ms: withheld (or sent with no magenta);
+- an iframe with 40 lines of text the DOM pass cannot read: sent, with no magenta.
 
 ### Fixture provenance
 
