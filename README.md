@@ -12,6 +12,8 @@ Privag AI is a browser extension that lets a server-side vision-language model (
 
 ## How one agent step works
 
+![One agent step, from the page to the executed action](assets/pipeline.png)
+
 1. **Pin and settle.** The task is pinned to the tab it started on; the extension pauses the page's animations and waits until its DOM stops changing (MutationObserver).
 2. **DOM pass** (`extension/content.js`, `extension/validators.js`). Visible text is checked with validators — Aadhaar (Verhoeff), cards (Luhn), PAN, Indian mobile, UPI, IFSC, email, labelled OTPs; a regex match alone never masks. Form fields are classified by purpose (`type`, `autocomplete` tokens such as `one-time-code` and `cc-number`, labels), including autofilled fields. Interactive elements get refs (`e1`, `e2`, …).
 3. **Screenshot** with `chrome.tabs.captureVisibleTab()`. If the page changed around the scan or the capture, both are redone; a page that keeps changing is withheld instead of sent. The raw image never leaves the browser.
