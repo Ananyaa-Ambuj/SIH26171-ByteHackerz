@@ -4,7 +4,9 @@
   <meta charset="utf-8">
   <title>Privag benchmark page</title>
   <!-- Synthetic values only. "Next" moves the photo one more pixel to the right on every click, so each step's
-       frame differs and the vision pass really runs (unchanged pixels would be served from its cache). -->
+       frame differs and the vision pass really runs (unchanged pixels would be served from its cache).
+       ?photo=still keeps the photo in place (vision runs once, then comes from the cache);
+       ?photo=none removes it (no media on screen, so vision is skipped). -->
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 16px 28px; background: #fff; color: #111; }
     .row { font-size: 22px; margin: 14px 0; }
@@ -27,11 +29,13 @@
     <img id="photo" alt="Team photo" src="face.jpg" width="240" height="320">
   </div>
   <script>
+    const photo = new URLSearchParams(location.search).get('photo') || 'moving';
+    if (photo === 'none') document.getElementById('photo').remove();
     let step = 0;
     document.getElementById('next').addEventListener('click', () => {
       step++;
       document.getElementById('caption').textContent = `Step ${step}`;
-      document.getElementById('photo').style.marginLeft = `${step}px`;
+      if (photo === 'moving') document.getElementById('photo').style.marginLeft = `${step}px`;
     });
   </script>
 </body>

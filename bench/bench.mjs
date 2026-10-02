@@ -13,8 +13,10 @@
 //       LLM_URL / LLM_MODEL / LLM_API_KEY  a real OpenAI-compatible endpoint instead of the mock
 //                (e.g. http://localhost:11434/v1 and gemma4:31b-it-q4_K_M); without it "vlm" is the mock's time
 //       LABEL    file name label for the results (default: hostname)
-//       BROWSER_ARGS  extra browser flags, space-separated (e.g. --disable-blink-features=WebGPU to measure the
-//                WASM fallback)
+//       PHOTO    moving (default: the photo moves every step, so vision runs every step), still (vision runs
+//                once, then comes from the cache) or none (no media on screen, so vision is skipped)
+//       BROWSER_ARGS  extra browser flags, space-separated (e.g. --disable-gpu to measure the WASM fallback;
+//                --disable-blink-features=WebGPU does not reach the extension's worker)
 // Use a profile without restored tabs: every restored tab is one more renderer process in the memory figures.
 import http from 'node:http';
 import net from 'node:net';
@@ -31,6 +33,7 @@ const require = createRequire(path.join(REPO, 'tests', 'package.json'));
 const puppeteer = require('puppeteer-core');
 
 const STEPS = Number(process.env.STEPS || 10);
+const PHOTO = process.env.PHOTO || 'moving';
 const extraArgs = (process.env.BROWSER_ARGS || '').split(/\s+/).filter(Boolean);
 const RESULTS = path.join(HERE, 'results');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -202,7 +205,7 @@ async function main() {
       try { const a = await navigator.gpu?.requestAdapter(); return a ? { vendor: a.info?.vendor, architecture: a.info?.architecture, description: a.info?.description } : null; } catch { return null; }
     });
 
-    const pageUrl = `http://127.0.0.1:${site.address().port}/`;
+    const pageUrl = `http://127.0.0.1:${site.address().port}/?photo=${PHOTO}`;
     await panel.evaluate(async (url) => {
       const tab = await chrome.tabs.create({ url, active: true });
       for (let i = 0; i < 100 && (await chrome.tabs.get(tab.id)).status !== 'complete'; i++) await new Promise((r) => setTimeout(r, 100));
@@ -235,6 +238,8 @@ async function main() {
     const peak = (key) => Math.max(0, ...during.map((s) => s[key] || 0));
     const mib = (bytes) => Number((bytes / 2 ** 20).toFixed(1));
     const stages = ['settle', 'dom', 'capture', 'vision', 'mask', 'network', 'vlm', 'execute', 'server'];
+    // A step's time on the device and the server: every stage, with the server round trip in place of network + vlm
+    const stepSum = (s) => ['settle', 'dom', 'capture', 'vision', 'mask', 'server', 'execute'].reduce((sum, k) => sum + (s[k] || 0), 0);
     const result = {
       date: new Date().toISOString(),
       hardware: { ...(await hardware()), webgpuAdapter: adapter },
@@ -243,6 +248,7 @@ async function main() {
       visionDevice: steps.find((s) => s.device)?.device || null,
       vlm: process.env.LLM_URL ? { url: 'real endpoint (LLM_URL)', model: llmModel } : { url: 'local mock (canned replies)', model: 'mock' },
       requestedSteps: STEPS,
+      photo: PHOTO,
       finalState: state,
       runMs,
       // From opening the side panel until the model badge said Ready (includes the download on a fresh profile)
@@ -250,6 +256,8 @@ async function main() {
       // vision: only steps where the model actually ran (a cached or skipped vision pass takes no model time)
       stagesMs: Object.fromEntries(stages.map((k) => [k, stats((k === 'vision' ? steps.filter((s) => s.visionMode === 'ran') : steps).map((s) => s[k]))])),
       visionModes: steps.map((s) => s.visionMode),
+      // Step sums grouped by what the vision pass did: ran (new pixels), cached (unchanged pixels), skipped (no media)
+      stepSumMs: Object.fromEntries(['ran', 'cached', 'skipped'].map((m) => [m, stats(steps.filter((s) => s.visionMode === m).map(stepSum))])),
       peakMemoryMiB: {
         // pageRenderer: the largest non-extension renderer, i.e. the test page's tab
         total: mib(peak('total')), pageRenderer: mib(peak('maxRenderer')), allRenderers: mib(peak('renderer')),
@@ -266,6 +274,7 @@ async function main() {
     fs.writeFileSync(file, JSON.stringify(result, null, 2));
     log(`raw results: ${path.relative(REPO, file)}`);
     log('stages (ms):', JSON.stringify(result.stagesMs));
+    log('step sums by vision mode (ms):', JSON.stringify(result.stepSumMs));
     log('peak memory (MiB):', JSON.stringify(result.peakMemoryMiB));
     log('vision device:', result.visionDevice, 'vlm:', JSON.stringify(result.vlm));
   } finally {
