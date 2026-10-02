@@ -165,8 +165,28 @@ async function checkServerHealth() {
   }
 }
 
-// 3. Setup Offscreen Document for Florence-2 Web Worker
+// 3. Setup Offscreen Document for Florence-2 Web Worker.
+// Firefox has no offscreen API: offscreen.html runs in a hidden iframe inside this panel instead (it gets the
+// same runtime messages) and lives as long as the panel. Every Firefox window has its own panel and vision host,
+// so messages carry this panel's host id and other windows' panels and hosts ignore them.
+const visionHostId = chrome.offscreen ? null : crypto.randomUUID();
+const toVisionHost = (message) => (visionHostId ? { ...message, host: visionHostId } : message);
+
 async function setupOffscreenDocument() {
+  if (visionHostId) {
+    if (document.getElementById('visionHost')) return;
+    const frame = document.createElement('iframe');
+    frame.id = 'visionHost';
+    frame.hidden = true;
+    frame.src = `offscreen.html?host=${visionHostId}`;
+    // Loaded = offscreen.js is listening
+    await new Promise((resolve) => {
+      frame.addEventListener('load', resolve, { once: true });
+      document.body.appendChild(frame);
+    });
+    log('Vision worker host initialized inside the panel.', 'info');
+    return;
+  }
   if (await chrome.offscreen.hasDocument?.()) return;
   try {
     await chrome.offscreen.createDocument({
@@ -184,6 +204,7 @@ async function setupOffscreenDocument() {
 
 // Listen for model state announcements from offscreen worker
 function handleModelMessage(msg) {
+  if (msg.host && msg.host !== visionHostId) return;
   if (msg.type === 'MODEL_READY') {
     modelProgress.style.display = 'none';
     const onGpu = msg.device === 'webgpu';
@@ -217,7 +238,7 @@ chrome.runtime.onMessage.addListener(handleModelMessage);
 // A panel opened after loading finished missed the one-time MODEL_READY / ERROR broadcast, so ask for it
 async function syncModelStatus() {
   try {
-    const state = await chrome.runtime.sendMessage({ action: 'GET_MODEL_STATUS' });
+    const state = await chrome.runtime.sendMessage(toVisionHost({ action: 'GET_MODEL_STATUS' }));
     if (state) handleModelMessage(state);
   } catch (e) {
     // Offscreen document not reachable yet; it will broadcast its state when loading finishes
@@ -265,7 +286,7 @@ function maskPlan(region, vault) {
 
 function sendToOffscreen(message) {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
+    chrome.runtime.sendMessage(toVisionHost(message), (response) => {
       if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
       else resolve(response);
     });

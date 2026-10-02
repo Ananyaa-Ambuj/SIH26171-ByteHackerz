@@ -26,29 +26,35 @@ const SOLID_MASK_COLOR = '#7f7f7f';
 // Requests waiting for the worker, so a crashed worker can fail them all at once
 const pending = new Map();
 
+// Set when this page runs inside a Firefox panel (offscreen.html?host=<id>; Firefox has no offscreen API): it
+// then answers only that panel and tags what it broadcasts, so other windows' panels and hosts ignore it.
+// Chrome's offscreen document has no host id and serves every panel.
+const host = new URLSearchParams(location.search).get('host');
+const broadcast = (data) => chrome.runtime.sendMessage(host ? { ...data, host } : data).catch(() => {});
+
 // 3. Forward model loading progress to the extension runtime (sidepanel)
 worker.addEventListener('message', (e) => {
     if (e.data.type === 'STATUS') {
         console.log('[Florence Offscreen]', e.data.message);
-        chrome.runtime.sendMessage(e.data).catch(() => {});
+        broadcast(e.data);
     } else if (e.data.type === 'PROGRESS') {
-        chrome.runtime.sendMessage(e.data).catch(() => {});
+        broadcast(e.data);
     } else if (e.data.type === 'MODEL_READY') {
         console.log(`[Florence] Model is ready on ${e.data.device}!`);
         modelState = e.data;
-        chrome.runtime.sendMessage(e.data).catch(() => {});
+        broadcast(e.data);
     } else if (e.data.type === 'ERROR' && e.data.requestId === undefined) {
         // Model loading failed (detection errors carry a requestId and are answered by detect())
         console.error('[Florence] Model failed to load:', e.data.error);
         modelState = e.data;
-        chrome.runtime.sendMessage(e.data).catch(() => {});
+        broadcast(e.data);
     }
 });
 
 // A worker that crashed outright answers nothing: fail every waiting detection and mark the model unusable
 worker.addEventListener('error', (e) => {
     modelState = { type: 'ERROR', error: `Vision worker crashed: ${e.message || 'unknown error'}` };
-    chrome.runtime.sendMessage(modelState).catch(() => {});
+    broadcast(modelState);
     for (const fail of pending.values()) fail(new Error(modelState.error));
     pending.clear();
 });
@@ -268,6 +274,7 @@ function drawMarks(ctx, elements, imageWidth) {
 
 // 4. Listen for detection requests from sidepanel.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (host && message.host !== host) return;
     if (message.action === 'GET_MODEL_STATUS') {
         sendResponse(modelState);
         return;
