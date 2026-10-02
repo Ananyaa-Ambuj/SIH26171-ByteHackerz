@@ -361,6 +361,36 @@ body {
   margin-top: 4px;
 }
 
+/* "Start the server" card, shown while the server cannot be reached */
+.server-help {
+  border-color: var(--accent-warning);
+}
+
+.server-help[hidden] {
+  display: none;
+}
+
+.server-help code {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.server-help-cmd {
+  margin: 6px 0 2px;
+  padding: 8px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-main);
+  overflow-x: auto;
+  white-space: pre;
+  user-select: all;
+}
+
 /* Buttons */
 .btn-grid {
   display: grid;

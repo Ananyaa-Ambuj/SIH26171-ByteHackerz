@@ -36,6 +36,21 @@
       </div>
     </div>
 
+    <!-- Shown only while the Privag server cannot be reached -->
+    <section id="serverHelp" class="section card server-help" hidden>
+      <div class="card-header">
+        <span class="card-title">Start the Privag server to run the agent</span>
+        <button id="serverRetryBtn" class="btn btn-secondary btn-sm">Check again</button>
+      </div>
+      <p class="help-text">No server answers at <code id="serverHelpUrl"></code>. In a terminal, from the repository folder:</p>
+      <pre class="server-help-cmd">cd server
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python app.py</pre>
+      <p class="help-text">(On Linux or macOS use <code>.venv/bin/python</code>.) The server's setup page then opens in your browser: enter the OpenAI-compatible URL of your model (for example Ollama or vLLM).</p>
+      <p class="help-text"><strong>Sanitize Only</strong> works without the server: it shows the masked frame the agent would send.</p>
+    </section>
+
     <!-- Server Settings Bar -->
     <section class="section card settings-card">
       <div class="settings-header" id="settingsToggle">

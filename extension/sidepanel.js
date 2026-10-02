@@ -16,6 +16,9 @@ const settingsBody = document.getElementById('settingsBody');
 const settingsArrow = document.getElementById('settingsArrow');
 const serverUrlInput = document.getElementById('serverUrlInput');
 const saveServerUrlBtn = document.getElementById('saveServerUrlBtn');
+const serverHelp = document.getElementById('serverHelp');
+const serverHelpUrl = document.getElementById('serverHelpUrl');
+const serverRetryBtn = document.getElementById('serverRetryBtn');
 
 const taskInput = document.getElementById('taskInput');
 const stepButton = document.getElementById('stepButton');
@@ -152,19 +155,20 @@ async function saveServerUrl() {
   checkServerHealth();
 }
 
+// While the server cannot be reached, a card at the top of the panel says how to start it
 async function checkServerHealth() {
+  let online = false;
   try {
     const res = await fetch(`${serverUrl}/api/status`, { method: 'GET' });
-    if (res.ok) {
-      serverBadge.textContent = 'Server: Online';
-      serverBadge.className = 'badge badge-online';
-    } else {
-      throw new Error(`HTTP ${res.status}`);
-    }
+    online = res.ok;
   } catch (e) {
-    serverBadge.textContent = 'Server: Offline';
-    serverBadge.className = 'badge badge-offline';
+    online = false;
   }
+  serverBadge.textContent = online ? 'Server: Online' : 'Server: Offline';
+  serverBadge.className = online ? 'badge badge-online' : 'badge badge-offline';
+  serverHelpUrl.textContent = serverUrl;
+  serverHelp.hidden = online;
+  return online;
 }
 
 // 3. Setup Offscreen Document for Florence-2 Web Worker.
@@ -709,6 +713,11 @@ async function startTask() {
     log('No active browser tab found.', 'error');
     return;
   }
+  if (!(await checkServerHealth())) {
+    log(`No Privag server at ${serverUrl}; start it as shown at the top of the panel, then press Run Agent again.`, 'warning');
+    serverHelp.scrollIntoView({ block: 'nearest' });
+    return;
+  }
   masker.clear();
   actionHistory = [];
   stepTimings.length = 0;
@@ -767,6 +776,10 @@ settingsToggle.addEventListener('click', () => {
 });
 
 saveServerUrlBtn.addEventListener('click', saveServerUrl);
+
+serverRetryBtn.addEventListener('click', async () => {
+  log((await checkServerHealth()) ? `Privag server found at ${serverUrl}.` : `Still no Privag server at ${serverUrl}.`, 'info');
+});
 
 serverUrlInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') saveServerUrl();
