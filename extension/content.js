@@ -46,6 +46,17 @@ async function privagWaitForQuiet(quietMs, maxMs) {
     return { quiet: false, waitedMs: Math.round(performance.now() - start) };
 }
 
+// The element's shadow root, open or closed (web components hide text and fields from plain queries; content
+// scripts may open closed roots). Chromium: chrome.dom.openOrClosedShadowRoot(el), which throws for SVG/MathML
+// elements (they cannot host shadow roots anyway; one inline SVG icon used to abort the whole scan). Firefox:
+// element.openOrClosedShadowRoot is a property, not a method.
+function privagShadowRootOf(el) {
+    if (!(el instanceof HTMLElement)) return null;
+    if (chrome.dom?.openOrClosedShadowRoot) return chrome.dom.openOrClosedShadowRoot(el);
+    if ('openOrClosedShadowRoot' in el) return el.openOrClosedShadowRoot;
+    return el.shadowRoot;
+}
+
 // A stable id per form field for this page, so a value read from a field can be bound to that field
 function privagFieldId(el) {
     window.__privagFieldIds ??= new WeakMap();
@@ -143,9 +154,7 @@ function privagScan() {
     const PROFILE_HINT = /avatar|profile|user[-_ ]?(photo|pic|image|img)|headshot|portrait|\bdp\b/i;
     for (let i = 0; i < roots.length; i++) {
         for (const el of roots[i].querySelectorAll('*')) {
-            // openOrClosedShadowRoot only accepts HTML elements and throws for SVG/MathML ones (which can't host
-            // shadow roots anyway); one inline SVG icon used to abort the whole scan
-            const shadow = el instanceof HTMLElement ? (chrome.dom?.openOrClosedShadowRoot?.(el) ?? el.openOrClosedShadowRoot?.() ?? el.shadowRoot) : null;
+            const shadow = privagShadowRootOf(el);
             if (shadow) {
                 roots.push(shadow);
                 privagObserveRoot(shadow);
