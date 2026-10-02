@@ -1,196 +1,164 @@
-# Privag AI — On-Device PII Firewall for Browser Agents
+Demo video: TODO-VIDEO-LINK
 
-> **PRIVAG** = **PRIV**acy **AG**ent · An on-device PII firewall for browser agents (Chrome + Firefox)  
-> _Smart India Hackathon 2026 | Problem Statement: SIH26171 | Organization: ISRO_  
-> **Team:** ByteHackerz — Indian Institute of Technology (IIT) Bhilai
+# Privag AI — an on-device PII firewall for browser agents
 
-[![SIH 2026](https://img.shields.io/badge/SIH-2026-0052CC?style=for-the-badge&logo=target&logoColor=white)](https://sih.gov.in)
-[![ISRO](https://img.shields.io/badge/Organization-ISRO-FF6F00?style=for-the-badge&logo=nasa&logoColor=white)](https://isro.gov.in)
-[![WebGPU + WASM](https://img.shields.io/badge/Client_AI-WebGPU_%2B_WASM_Fallback-7C3AED?style=for-the-badge&logo=webgl&logoColor=white)](#)
-[![Python 3.11](https://img.shields.io/badge/Backend-Python_3.11_Flask-10B981?style=for-the-badge&logo=python&logoColor=white)](#)
-[![Privacy First](https://img.shields.io/badge/Privacy-Zero_Cloud_PII_Leakage-EF4444?style=for-the-badge&logo=shield&logoColor=white)](#)
+Smart India Hackathon 2026 · Problem statement **SIH26171** (ISRO): *On-device Visual Perception for Light-weight Browser Agents* · Team **ByteHackerz**, IIT Bhilai
 
----
+Privag AI is a browser extension that lets a server-side vision-language model (Gemma 4) operate web pages for you without seeing your personal data. Before every step it finds PII on your device — in the page's DOM with checksum validators, and inside images and frames with the Florence-2 vision model running in the browser — and masks it in the screenshot, the task text and the action history. The server answers with one JSON action, which the extension checks against a local gate (no typing secrets, no leaving the site, your click before submit or pay) and then executes.
 
-## 📌 Executive Summary
+![Architecture as submitted](assets/Privagflowchart.png)
 
-Modern AI browser agents stream raw, unredacted screen captures directly to cloud foundation models. In doing so, passwords, Aadhaar cards, PAN numbers, banking tokens, and private faces leave the user's computer, irreversibly violating privacy.
+*The architecture diagram from our submission. Two differences in the code: faces get a solid grey mask instead of a blur, and names in free text are not detected yet (on-device NER is planned).*
 
-**Privag AI** introduces a lightweight, privacy-by-architecture solution for browser automation:
+## How one agent step works
 
-1. **On-Device Sanitization**: All Personally Identifiable Information (PII) is detected and redacted **locally in the browser** before any network request is made.
-2. **Redaction-Aware Reasoning**: A companion **Redaction Manifest** informs the upstream Vision-Language Model (VLM) of _what_ functional elements exist without ever exposing the underlying private values.
-3. **Action Execution Loop**: The server returns grounded, structured actions (`click`, `type`, `scroll`, `wait`) that the browser executes autonomously.
+1. **Pin and settle.** The task is pinned to the tab it started on; the extension pauses the page's animations and waits until its DOM stops changing (MutationObserver).
+2. **DOM pass** (`extension/content.js`, `extension/validators.js`). Visible text is checked with validators — Aadhaar (Verhoeff), cards (Luhn), PAN, Indian mobile, UPI, IFSC, email, labelled OTPs; a regex match alone never masks. Form fields are classified by purpose (`type`, `autocomplete` tokens such as `one-time-code` and `cc-number`, labels), including autofilled fields. Interactive elements get refs (`e1`, `e2`, …).
+3. **Screenshot** with `chrome.tabs.captureVisibleTab()`. If the page changed around the scan or the capture, both are redone; a page that keeps changing is withheld instead of sent. The raw image never leaves the browser.
+4. **Vision pass** (`client-vision/worker.js`): Florence-2 (ONNX, Transformers.js) in a Web Worker on WebGPU with a WASM fallback, run only on images, video, canvas, frames and embedded PDFs: faces (`<OD>`) and text (`<OCR_WITH_REGION>`).
+5. **Canvas masking** (`extension/offscreen.js`): black boxes for passwords, OTPs, card and ID numbers and text in images; a solid grey mask for faces and profile photos; format-preserving fakes (`user_0001@example.com`, `90000 00001`) for values the agent may need. A redaction manifest `{type, method, source, bbox}` describes every mask and is schema-checked.
+6. **Masked text.** The task and the action history go through the same placeholder vault (memory only).
+7. **Server** (`server/`, Flask): validates the request, asks Gemma 4 (vLLM or Ollama, OpenAI-compatible API) and validates the reply into exactly one action: `{"action": "click|type|scroll|wait|done", "ref", "target", "coordinates", "value"}`.
+8. **Local gate and execution.** The action is checked on the device; a placeholder becomes the real value only in the field it belongs to; the action runs via `chrome.scripting.executeScript()`; repeat until `done`.
 
----
+Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · server API: [`docs/API.md`](docs/API.md)
 
-## 💡 Engineering Philosophy: "Minimal AI by Design"
+## Run it
 
-Rather than lazily outsourcing privacy detection to expensive, non-deterministic cloud LLMs, Privag AI is engineered from **first principles**:
-
-> **"If code can solve it deterministically, code solves it. AI is invoked only where code cannot reach."**
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        PRIVAG PRIVACY PRINCIPLE                        │
-├──────────────────────────┬─────────────────────────┬───────────────────┤
-│ 1. Form Passwords & PII  │ Handcoded DOM Traversal │ <20ms, 100% Recall│
-│ 2. Visual Redactions     │ Native HTML5 Canvas 2D  │ Zero AI Overhead  │
-│ 3. Unstructured Faces/OCR│ On-Device WebGPU Model  │ Zero Cloud Data   │
-│ 4. Next-Action Reasoning │ Model-Agnostic VLM      │ Blind to Secrets  │
-└──────────────────────────┴─────────────────────────┴───────────────────┘
-```
-
-- **No unnecessary compute:** 100% of standard form fields (`input[type="password"]`, email, phone, card numbers) are identified in **under 20 milliseconds** via deterministic DOM scanning.
-- **Pure graphics math for redaction:** Synthetic look-alike values, black-box masks and Gaussian blurs are rendered directly using the browser's native Canvas 2D engine.
-- **On-device AI only where essential:** Florence-2 runs locally inside the browser via WebGPU (with an automatic WebAssembly/WASM CPU fallback on unsupported devices) to detect visual human faces and unstructured text rendered inside images or banners.
-
----
-
-## 🏗️ System Architecture
-
-![Privag System Architecture](assets/Privagflowchart.png)
-
-### The Dual-Pass Pipeline
-
-![Dual-Pass Pipeline](assets/pipeline.png)
-
----
-
-## 🎥 Prototype Demonstration
-
-<video src="assets/demo.mp4" controls="controls" width="100%"></video>
-
-*(Standalone video file: [`assets/demo.mp4`](assets/demo.mp4))*
-
----
-
-## ⚡ Hardware Benchmarks
-
-All benchmarks measured locally on a consumer-grade laptop (Intel Core i5 10th Gen, NVIDIA GeForce GTX 1650 4GB VRAM, 8GB RAM, Windows 11):
-
-| Model Component                        |  Runtime Backend  |     Latency      |     Detection Capability     | Target Role                       |
-| :------------------------------------- | :---------------: | :--------------: | :--------------------------: | :-------------------------------- |
-| **Florence-2 On-Device Vision**        | In-Browser WebGPU | **3.18 seconds** | Visual Text & Face Detection | Zero-knowledge client perception  |
-| **Deterministic DOM Scanner**          | Content Script JS |   **< 20 ms**    |   100% on HTML Form Fields   | Instantaneous client form masking |
-| **Upstream Server VLM (`gemma4:31b`)** |    Gemini API     | **~1.2 seconds** |  Redaction-Aware Reasoning   | Next-action planning & execution  |
-
-### Benchmark Highlights:
-
-- **Zero Cloud Vision Overhead:** Privacy filtering happens completely on client silicon before any network packet is dispatched.
-- **Single-Pass Face Merging:** Overlapping multi-token detections (eyes, head, person) are dynamically merged via bounding union to produce a clean, unified Gaussian blur.
-- **Graceful Degradation:** Runs with hardware-accelerated WebGPU by default; automatically falls back to 4-bit quantized WASM execution if GPU access is restricted.
-
----
-
-## 🛡️ Three Redaction Modalities
-
-Privag AI matches the redaction technique to where the PII was found: everything the deterministic DOM scan finds is replaced by a synthetic look-alike, and only PII that exists solely as pixels (found by Florence-2) is blacked out or blurred.
-
-1. **Semantic Obfuscation (`semantic_mock`) — all PII found in the page's DOM:**
-   - Applied to Aadhaar, PAN, phone, email and card numbers in page text and form fields, and to passwords.
-   - Each value is replaced by a format-preserving, clearly synthetic fake drawn in its place, so the page keeps its structure:
-
-     | Type | Fake | Why it cannot be real |
-     | :--- | :--- | :--- |
-     | Aadhaar | `0000 0000 0001` (original spacing kept) | Real Aadhaar numbers never start with 0 |
-     | PAN | `ZZZZZ0001Z` | `Z` is not a valid PAN holder-type letter |
-     | Phone | `90000 00001` | Synthetic series, 10 digits starting 6–9 |
-     | Card | `4111 1111 1111 0001` | Visa test-card range |
-     | Email | `user_0001@example.com` | `example.com` is reserved for documentation |
-     | Password | `••••••••` (fixed length) | Hides the real length too |
-
-   - Fakes are numbered with a fixed width, so no fake is a prefix of another, and the same real value keeps the same fake for the whole agent run.
-   - The same fakes replace PII in everything else sent to the server: element names in the manifest and the user's task text (secrets without a recognisable format, like passwords, can be marked `{{…}}` in the task).
-   - When the model types a fake, the extension swaps it back to the real value locally, just before execution. Real values never leave the device, and the action history only ever holds fakes.
-2. **Solid Black-Box Masking (`black_box`) — text PII inside images:**
-   - Applied to Aadhaar, PAN, phone and email text that Florence-2 OCR finds inside images, canvases, video and frames.
-   - Solid `#000000` rectangles with safety padding. They are never drawn over a DOM fake: DOM PII is hidden from OCR, and fakes are drawn last.
-3. **True Gaussian Blur (`gaussian_blur`) — faces:**
-   - Applied to human faces, profile pictures, and biometric photos found by Florence-2 object detection.
-   - Rendered using native Canvas filtering (`ctx.filter = 'blur(14px)'`) with strict clipping bounds.
-
----
-
-## 📊 Alignment with SIH Evaluation Criteria
-
-| Evaluation Metric                    | Weight  | Privag AI Implementation                                                                                                                                                   |
-| :----------------------------------- | :-----: | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Visual Context Accuracy**          | **25%** | Redaction Manifest sends structured element coordinates, DOM tags, and visible buttons alongside the image so the VLM maintains full context without seeing raw PII.       |
-| **PII Detection Recall & Precision** | **20%** | Dual-pass synergy: DOM scan achieves 100% precision on HTML form fields, while on-device Florence-2 catches unstructured visual text and human faces on the rendered page. |
-| **Redaction Precision**              | **20%** | Native Canvas 2D engine with safety padding (`padX: 4, padY: 3`) prevents boundary bleed and ensures 100% occlusion of sensitive text tokens.                              |
-| **Client-Side Resource Usage**       | **20%** | First-principles engineering minimizes AI invocations. DOM scan runs in $<20\text{ms}$ with 0 MB VRAM; Florence-2 leverages browser hardware acceleration via WebGPU.      |
-| **End-to-End Latency**               | **15%** | DOM filtering provides instantaneous client masking; on-device Florence-2 completes client vision in $\approx 3.18\text{s}$ on standard consumer hardware.                    |
-
----
-
-## 📚 Project Documentation
-
-Detailed technical guides, architectural specifications, and hardware evaluation data are documented inside the [`docs/`](docs/) directory:
-
-| Document                                              | Description                           | Key Focus Areas                                                                                                 |
-| :---------------------------------------------------- | :------------------------------------ | :-------------------------------------------------------------------------------------------------------------- |
-| 🏗️ **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** | **System Architecture & Data Flow**   | Zero-knowledge client boundary, Dual-Pass pipeline, Redaction Manifest schema, and upstream VLM grammar.        |
-| 🔌 **[`docs/API.md`](docs/API.md)**                   | **Server Integration & API Contract** | Complete endpoint specifications (`/api`, `/api/step`, `/model/info`), JSON schemas, and client fetch snippets. |
-| ⚡ **[`docs/BENCHMARKS.md`](docs/BENCHMARKS.md)**     | **Hardware Benchmarks & Profiles**    | Latency measurements, RAM/VRAM footprints, WebGPU vs WASM runtime, and PII recall rates across modalities.      |
-| 🎯 **[`docs/EVALUATION.md`](docs/EVALUATION.md)**     | **SIH Evaluation Alignment Matrix**   | Direct mapping demonstrating how Privag AI satisfies all 5 ISRO evaluation criteria with concrete numbers.      |
-
----
-
-## 🚀 Quickstart Guide
-
-### 1. Server Setup (Python Flask)
+### 1. Server (Python 3.11+)
 
 ```powershell
 cd server
 python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
+.\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python app.py
 ```
 
-- Server runs on `http://127.0.0.1:5000`
-- Management dashboard accessible at `http://127.0.0.1:5000/`
+On Linux/macOS use `.venv/bin/python`. The server listens on `http://127.0.0.1:5000` with the debugger off. Settings come from `server/config.default.json`, overridden by the dashboard at `http://127.0.0.1:5000/` (local only; saved to the git-ignored `server/config.json`) and by environment variables:
 
-### 2. Standalone Vision Engine & Benchmarks (WebGPU)
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PRIVAG_LLM_URL` | `http://localhost:11434/v1` | OpenAI-compatible endpoint (Ollama; vLLM serves on `http://<host>:8000/v1`) |
+| `PRIVAG_LLM_MODEL` | `gemma4:31b-it-q4_K_M` | Ollama tag of Gemma 4 31B-it (Q4_K_M); for vLLM use `google/gemma-4-31B-it` |
+| `PRIVAG_LLM_API_KEY` | empty | only for endpoints that need a key |
+| `PRIVAG_LLM_TIMEOUT` | `600` | seconds to wait for the model |
+| `PRIVAG_HOST` / `PRIVAG_PORT` | `127.0.0.1` / `5000` | where the server listens (`0.0.0.0` to serve a LAN) |
+| `PRIVAG_DEBUG` | off | `1` enables Flask debug mode (never on a shared network) |
 
-```powershell
-cd client-vision
-npm install
-npm run build
-cd ..
-python -m http.server 8080
+`server/.env.example` documents the same variables; the server reads the process environment and does not load `.env` files. To serve Gemma 4 with Ollama: `ollama pull gemma4:31b-it-q4_K_M`, then start the server as above.
+
+### 2. Extension — Chrome, Edge or Brave
+
+1. Open `chrome://extensions` (`brave://extensions`, `edge://extensions`) and turn on **Developer mode**.
+2. **Load unpacked** → select the `extension/` folder. No build step: the vision worker bundle and the ONNX Runtime files are committed (rebuild with `cd client-vision; npm install; npm run build`).
+3. Click the toolbar icon to open the side panel. The first start downloads the Florence-2 weights from Hugging Face; the browser caches them.
+4. In the side panel's settings, the server URL defaults to `http://localhost:5000` (plain `http` is accepted only for this machine or a private network address).
+5. Open a page, type a task and press **Run Agent**. **Sanitize Only** shows the masked frame without contacting the server.
+
+### 3. Extension — Firefox
+
+Firefox 140 or newer; the same `extension/` folder, no build step.
+
+1. Open `about:debugging#/runtime/this-firefox` and click **Load Temporary Add-on…**.
+2. Select `extension/manifest.json`. (A temporary add-on is removed when Firefox closes.)
+3. Click the Privag toolbar button to open the sidebar. If Firefox lists the add-on as needing site access, allow it in `about:addons` → Privag AI → Permissions.
+4. Continue from step 4 above. In our Firefox test the vision model ran on WASM, which is much slower than WebGPU (see Measured results).
+
+### 4. Tests and benchmark
+
+```sh
+node --test "tests/unit/*.test.mjs"                         # validators, action gate, manifest schema, vault, OCR rules
+cd server && .venv/Scripts/python -m unittest discover -s tests   # server contract and security fixes
+cd tests && npm install && npm run test:privacy               # privacy end-to-end test (needs a Chromium-based browser)
+node bench/bench.mjs                                          # per-stage latency and peak memory -> bench/results/
 ```
 
-- Open **`http://localhost:8080/client-vision/test.html`** in Google Chrome or Brave. The page runs the extension's own worker build (`extension/florence-worker.bundle.js`), so serve from the repository root.
-- Run instant on-device PII detection with WebGPU acceleration.
+[`tests/README.md`](tests/README.md) explains each suite and its environment variables.
 
-### 3. Chrome Extension Deployment
+## Feature status
 
-1. Build the vision worker into the extension (only needed after changing `client-vision/worker.js` or its dependencies):
-   ```powershell
-   cd client-vision
-   npm install
-   npm run build
-   ```
-   This writes `extension/florence-worker.bundle.js` and copies ONNX Runtime's `ort-wasm-simd-threaded.asyncify.mjs` / `.wasm` next to it. The extension must ship these files: its Content Security Policy blocks loading them from a CDN, which otherwise breaks both WebGPU and the WASM fallback.
-2. Open Google Chrome (or Brave) and navigate to `chrome://extensions/` (`brave://extensions/`).
-3. Enable **Developer mode** (top right toggle).
-4. Click **Load unpacked** and select the `extension/` directory.
-5. Pin the **Privag AI** icon and launch the agent on any web form. The first launch downloads the Florence-2 weights (~340 MB); they are cached by the browser afterwards.
+What the code does today, claim by claim, against the idea submission.
 
----
+| Feature | Status | Notes |
+| --- | --- | --- |
+| One WebExtension for Chrome (MV3) and Firefox | Implemented | Tested in Brave (Chromium 154) and in headless Firefox 157 as a temporary add-on. Google Chrome and Edge themselves were not tested. |
+| Screenshot with `chrome.tabs.captureVisibleTab()`; the raw image never leaves the browser | Implemented | The privacy test checks the exact bytes sent. |
+| DOM pass: input types, `autocomplete` tokens (`cc-number`, `one-time-code`, `tel`, `email`, …), visible text with on-screen boxes | Implemented | Text drawn by CSS `::before`/`::after` is not read. |
+| Validators: Aadhaar (Verhoeff), cards (Luhn), PAN, phone, UPI, IFSC; a regex match alone never masks | Implemented | Unit-tested against published vectors. |
+| MutationObserver for dynamic forms, pop-ups, SPA updates | Implemented | Pages that keep changing are withheld, not guessed. |
+| Florence-2 (ONNX, Transformers.js) on WebGPU with WASM fallback, in a Web Worker, only on image, canvas and PDF regions | Implemented | WebGPU in Brave; WASM in our Firefox run. |
+| On-device NER for names in free text | Planned | Name *fields* are masked; names in free page text and in the task are not. |
+| Canvas masking: black box for passwords, cards and IDs; solid mask (not blur) for faces and profile photos; look-alike values for what the agent must use | Implemented | |
+| Fail-closed: unscanned or uncertain regions masked, or the frame withheld | Implemented | Florence-2 gives no calibrated confidence; uncertainty is handled by rules (see Privacy guarantees). |
+| Redaction manifest `{type, method, source, bbox}` with every frame | Implemented | Schema-checked by the extension and the server. |
+| Task text and action history masked with placeholders | Implemented | Same limits as the DOM pass (no names in free text). |
+| Action gate: no typing into password/OTP fields, no off-site navigation, user click before submit or pay | Implemented | |
+| Placeholder vault: memory only, real values only into their source field, cleared on tab close | Implemented | Cleared whenever the task ends (done, Stop, a new task, tab closed); kept while a task is paused. |
+| Actions through `chrome.scripting.executeScript()`, looping until done | Implemented | |
+| Flask REST/JSON server for Gemma 4 31B-it (quantized) via vLLM or Ollama | Partial | Server implemented and tested with a mock model. Not yet run against Gemma 4 here (no GPU large enough on the test machine). |
+| One JSON action per step: `{"action": "click\|type\|scroll\|wait\|done", "target", "coordinates"}` | Implemented | The server validates the reply into exactly one action (plus `ref`, `value`, `thought`). |
+| The server is never asked to guess masked content | Implemented | System prompt rule; the model only ever sees masks and look-alikes. |
 
-## 👥 Team Details
+## Measured results
 
-- **Team:** ByteHackerz — IIT Bhilai
-- **Problem Statement:** SIH26171 — _On-device Visual Perception for Light-weight Browser Agents_
-- **Theme:** Smart Automation
-- **PS Category:** Software
-- **Lead Ministry / Organization:** Indian Space Research Organisation (ISRO)
+Measured on 2026-10-02 with `bench/bench.mjs`: a laptop with an Intel Core i5-10300H, 7.9 GiB RAM and an NVIDIA GeForce GTX 1650 (4 GB), Windows 11, Brave 1.96 (Chromium 154), headless. Each run was 10 agent steps on WebGPU (two runs) or 3 steps on the WASM fallback, against the real server and a **mock** model. Raw output is in [`bench/results/`](bench/results/); method and every stage are in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
 
----
+| Measure | WebGPU | WASM fallback |
+| --- | --- | --- |
+| Florence-2 vision pass per step (median) | 2.73 s and 2.83 s (two runs) | 93.5 s |
+| DOM scan per step (median) | 3–4 ms | 4 ms |
+| Screenshot (median) | 64–73 ms | 73 ms |
+| Masking + JPEG (median) | 29–31 ms | 24 ms |
+| Whole step on the device and server, mock model (median) | 3.14 s and 3.25 s | 93.9 s |
+| Model load from the browser cache | 12.4 s and 17.6 s | 10.4 s |
+| Model download (first run, once) | 343.0 MiB | + 227.8 MiB |
+| Peak memory of the web page's tab | 25.1–25.9 MiB | 24.9 MiB |
+| Peak memory of the extension (side panel + model host) | 1004.4–1070.4 MiB | 1320.1 MiB |
+| Peak memory of the browser's GPU process | 1565.1–1571.8 MiB | 31.8 MiB |
+| Gemma 4 time per step | not yet measured | not yet measured |
+| PII detection recall / precision on a labelled set | not yet measured | not yet measured |
 
-## 📄 License
+Test results on the same machine: 98 unit tests and 39 server tests pass; the privacy test and the race test pass in Brave. The smoke tests were run from a scratch harness outside the repository: Brave passed 28/28 and headless Firefox 157 passed 36/36, with vision on WASM there.
 
-This project is developed for the Smart India Hackathon 2026 under the MIT License.
+## Privacy guarantees
+
+What the code enforces, and what checks it:
+
+- **Pixels.** Only the masked JPEG leaves the browser. The raw screenshot goes from the side panel to the offscreen document by in-browser messaging and nowhere else. *Checked by:* the privacy test, which captures the exact request bytes.
+- **Text.** Page text and field values never leave the device. The manifest carries only types, methods, sources, boxes and look-alike values, and both sides reject any other key. Element names, the task and the action history go through the same vault. *Checked by:* the privacy test (11 PII strings searched in every request, extension → server and server → model), unit tests of the manifest schema.
+- **Placeholders.** A look-alike typed by the model becomes the real value only in the field it was read from, or in a field whose purpose matches its type. Everywhere else the action is refused. The vault lives in memory only and is cleared when the task ends. *Checked by:* unit tests of the vault, the Brave and Firefox smoke tests.
+- **Actions.** No typing into password, OTP or CVV fields; no navigation or form submission off the start site; your click before any submit or payment. *Checked by:* unit tests of the gate, smoke tests.
+- **Fail-closed.** The frame is withheld when:
+  - the DOM pass cannot run;
+  - the page changes between the scan and the screenshot;
+  - vision is needed but not ready, fails, or returns a face or text without a position;
+  - the tab changes during capture;
+  - the manifest fails its schema.
+
+  Text inside frames and embedded PDFs, which the DOM pass cannot read, is blacked out line by line, and whole media areas are blacked out when OCR output was cut off. *Checked by:* the race harness (live feed, script-driven ticker, CSS animation, dense frame), the privacy test.
+- **Server.** It listens on 127.0.0.1 with the debugger off. It sends no CORS headers, so web pages cannot read its answers. Its config endpoint answers only local requests and never returns the API key. Every request and every model reply is validated. *Checked by:* 39 server unit tests.
+
+## Known limitations
+
+- **Names in free text** are not detected yet (on-device NER is planned). Name fields are masked.
+- **OCR misses:** text that Florence-2 OCR does not read inside an image or frame is not masked. Small text in a large image is the usual case.
+- **Not read by the DOM pass:** text drawn with CSS `::before`/`::after`.
+- **Pages that change faster than every 100 ms** (live feeds, script-driven tickers) are withheld on every step, so the agent stops on them.
+- **Script navigations:** a page script can navigate without a link; the gate cannot see that in advance, so the task pauses when the tab has left the site.
+- **Not yet measured:** detection recall and precision on a labelled set, a full step with Gemma 4, and Chrome/Edge (only Brave was tested).
+- **Firefox speed:** our Firefox run used the WASM fallback, which is far slower than WebGPU.
+
+## Repository layout
+
+| Path | What |
+| --- | --- |
+| `extension/` | the WebExtension: side panel orchestrator, content script, validators, action gate, vault, offscreen canvas masking, Florence-2 worker bundle |
+| `client-vision/` | source of the vision worker (`worker.js`, `ocr-pii.js`) and a standalone test page |
+| `server/` | Flask server, default config, dashboard, unit tests |
+| `tests/` | unit tests and the privacy end-to-end test |
+| `bench/` | benchmark script, fixture page and raw results |
+| `docs/` | architecture, server API, benchmarks, evaluation mapping |
+
+## License
+
+Developed for Smart India Hackathon 2026 under the MIT License.
