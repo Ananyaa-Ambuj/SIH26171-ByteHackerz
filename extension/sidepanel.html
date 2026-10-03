@@ -84,13 +84,18 @@ python -m venv .venv
         <button id="clearButton" class="btn btn-ghost">Clear</button>
       </div>
 
-      <!-- Pause / confirmation banner: the task waits here for the user -->
+      <!-- Pause / confirmation / question banner: the task waits here for the user -->
       <div id="runBanner" class="run-banner" hidden>
         <span id="runBannerText" class="run-banner-text"></span>
         <div class="run-banner-actions">
           <button id="resumeButton" class="btn btn-primary btn-sm" hidden>Resume</button>
           <button id="allowButton" class="btn btn-primary btn-sm" hidden>Allow once</button>
         </div>
+        <!-- The agent's question: the answer is masked like the task before it is sent -->
+        <form id="answerForm" class="run-banner-answer" hidden>
+          <input type="text" id="answerInput" class="text-input" maxlength="500" autocomplete="off" placeholder="Your answer" aria-label="Your answer to the agent" />
+          <button type="submit" class="btn btn-primary btn-sm">Answer</button>
+        </form>
       </div>
     </section>
 

@@ -29,6 +29,8 @@ const runBanner = document.getElementById('runBanner');
 const runBannerText = document.getElementById('runBannerText');
 const resumeButton = document.getElementById('resumeButton');
 const allowButton = document.getElementById('allowButton');
+const answerForm = document.getElementById('answerForm');
+const answerInput = document.getElementById('answerInput');
 
 const canvas = document.getElementById('screenshotCanvas');
 const ctx = canvas.getContext('2d');
@@ -418,12 +420,12 @@ async function sanitizeTab(tabId, vault) {
 const MAX_AGENT_STEPS = 15;
 const MAX_STALLED_STEPS = 3;
 let task = null;            // { goal, tabId, windowId, startUrl, step, stepsLeft, stalled }
-let runState = 'idle';      // 'idle' | 'running' | 'paused' | 'confirming'
+let runState = 'idle';      // 'idle' | 'running' | 'paused' | 'confirming' | 'asking'
 let pauseReason = '';
 let pauseCode = null;
 let pauseRequest = null;    // set by tab events while a step runs; the loop pauses at its next checkpoint
 let serverRequest = null;   // AbortController of the in-flight server call
-let userDecision = null;    // resolver while waiting for the user's click on a submit/pay action
+let userDecision = null;    // resolver while waiting for the user's click on a submit/pay action or an answer
 // Per-step stage timings in ms (capture, DOM, vision, mask, network, VLM, execute), read by bench/
 const stepTimings = window.__privagSteps = [];
 
@@ -440,7 +442,7 @@ function showDecision(action) {
   actionTargetEl.textContent = [action.ref, action.target].filter(Boolean).join(' · ') || 'None';
   actionCoordsEl.textContent = action.ref ? `ref ${action.ref}`
     : Array.isArray(action.coordinates) ? `[${action.coordinates.join(', ')}]` : 'N/A';
-  actionValueEl.textContent = action.value || 'None';
+  actionValueEl.textContent = action.value || action.question || 'None';
 }
 
 // Only these fields of the server's action are used, so a reply cannot smuggle in flags (e.g. a fake
@@ -448,7 +450,7 @@ function showDecision(action) {
 function pickAction(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const action = { action: String(raw.action || '').toLowerCase() };
-  for (const key of ['thought', 'target', 'value', 'ref']) {
+  for (const key of ['thought', 'target', 'value', 'ref', 'question']) {
     if (typeof raw[key] === 'string') action[key] = raw[key];
   }
   if (typeof raw.ref === 'number') action.ref = `e${raw.ref}`;
@@ -507,6 +509,8 @@ function requestPause(reason) {
   } else if (runState === 'paused') {
     setAgentUi();
   }
+  // While the agent waits for an answer nothing touches the page: the question stays, and the loop checks the
+  // tab again before its next step
 }
 
 function endTask(message, type = 'info') {
@@ -535,6 +539,35 @@ function askUser(question) {
       resolve(decision);
     };
   });
+}
+
+// The agent's question: the task waits for the user's typed answer (or Stop). The answer goes through the vault like
+// the task text, so PII in it reaches the server only as placeholders, which the gate resolves in matching fields.
+async function answerQuestion(action, current) {
+  const question = action.question || action.value || '';
+  runState = 'asking';
+  pauseReason = question;
+  log(`The agent asks: ${question}`, 'warning');
+  answerInput.value = '';
+  setAgentUi();
+  answerInput.focus();
+  const reply = await new Promise((resolve) => {
+    userDecision = (decision) => {
+      userDecision = null;
+      resolve(decision);
+    };
+  });
+  // The raw answer does not stay in the panel, neither after it is sent nor after Stop or Clear
+  answerInput.value = '';
+  if (!current() || typeof reply?.answer !== 'string') return { stale: true };
+  runState = 'running';
+  setAgentUi();
+  const answer = masker.maskText(reply.answer, 'task');
+  const entry = { action: 'ask_user', question: masker.maskText(question, 'page'), result: `The user answered: ${answer}` };
+  if (typeof action.thought === 'string') entry.thought = masker.maskText(action.thought, 'page');
+  log(`You answered; the agent sees: ${answer}`, 'success');
+  actionHistory.push(JSON.stringify(entry));
+  return { progress: true };
 }
 
 // The local gate: the target is described by the page, the rules in action-gate.js decide, and a typed fake is
@@ -632,6 +665,10 @@ async function runAgentStep(current) {
   if (action.action === 'done') {
     stepTimings.push(timing);
     return { done: true };
+  }
+  if (action.action === 'ask_user') {
+    stepTimings.push(timing);
+    return answerQuestion(action, current);
   }
 
   log(`Executing ${action.action} on the task's tab...`, 'info');
@@ -747,12 +784,16 @@ function setAgentUi() {
   sanitizeButton.disabled = active;
   taskInput.disabled = active;
 
-  const banner = runState === 'paused' || runState === 'confirming';
+  const banner = runState === 'paused' || runState === 'confirming' || runState === 'asking';
   runBanner.hidden = !banner;
-  runBanner.className = `run-banner ${runState === 'confirming' ? 'run-banner-confirm' : ''}`;
-  runBannerText.textContent = runState === 'confirming' ? `Your click is needed: ${pauseReason}` : `Paused: ${pauseReason}`;
+  runBanner.className = `run-banner ${{ confirming: 'run-banner-confirm', asking: 'run-banner-ask' }[runState] || ''}`;
+  runBannerText.textContent = {
+    confirming: `Your click is needed: ${pauseReason}`,
+    asking: `The agent asks: ${pauseReason}`,
+  }[runState] || `Paused: ${pauseReason}`;
   resumeButton.hidden = runState !== 'paused';
   allowButton.hidden = runState !== 'confirming';
+  answerForm.hidden = runState !== 'asking';
 }
 
 // Tab events: the task follows only its own tab
@@ -797,6 +838,16 @@ resumeButton.addEventListener('click', resumeTask);
 
 allowButton.addEventListener('click', () => {
   userDecision?.('allow');
+});
+
+answerForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const answer = answerInput.value.trim();
+  if (!answer || runState !== 'asking') {
+    answerInput.focus();
+    return;
+  }
+  userDecision?.({ answer });
 });
 
 sanitizeButton.addEventListener('click', async () => {

@@ -43,17 +43,25 @@ The extension files are classic scripts that set a global (`globalThis.PrivagVal
 
 The core promise: no raw PII leaves the device. The test opens `privacy/fixture/index.html` (synthetic Aadhaar,
 PAN, card, mobile, email, OTP, UPI, IFSC and a face photo) in a real Chromium-based browser with the unpacked
-extension, runs one agent step through the real Flask server (backed by a local mock LLM that clicks "Next" and
-then answers "done"), and records the exact bytes of every request:
+extension, runs an agent task through the real Flask server (backed by a local mock LLM that clicks "Next", asks
+which PAN to enter, types the PAN from the user's answer into the page's empty PAN field and then answers "done"),
+and records the exact bytes of every request:
 
 - extension -> server, through a recording proxy in front of Flask, and
 - server -> LLM, as received by the mock.
 
-It fails if any of the PII strings (also in their digits-only forms) appears in any of them, if a manifest fails
-the schema, if an expected mask is missing (black boxes for Aadhaar, PAN, card and OTP; look-alikes for phone,
-email, UPI and IFSC; a solid mask on the face found by the on-device vision model), if the task text still holds
-the card number, or if a mask in the sent image is not solid. The captured requests, the sent image and the side
-panel's log are written to `privacy/out/` (git-ignored).
+The test answers the agent's question in the side panel's answer box, as the user would: `Use BNZPM2501F`, a PAN
+that appears nowhere else.
+
+It fails if any of the PII strings (also in their digits-only forms, and the PAN from the answer) appears in any
+of them, if a manifest fails the schema, if an expected mask is missing (black boxes for Aadhaar, PAN, card and
+OTP; look-alikes for phone, email, UPI and IFSC; a solid mask on the face found by the on-device vision model), if
+the task text still holds the card number, or if a mask in the sent image is not solid. For the answer, it also
+fails if the side panel does not show the question with the answer box, if the history sent after the answer does
+not hold `The user answered: Use ` plus a placeholder PAN, if the page's PAN field does not end up holding the real
+PAN (the vault resolved the placeholder the agent typed), or if the raw answer is still in the answer box after
+the task. The captured requests, the sent image and the side panel's log are written to `privacy/out/`
+(git-ignored).
 
 ```sh
 cd tests
@@ -84,8 +92,8 @@ test pages is drawn in pure magenta, and the test counts strongly magenta pixels
 
 ### Fixture provenance
 
-All IDs on the fixture page are synthetic values chosen to pass their checksums (Verhoeff, Luhn) or structure
-checks; `4111 1111 1111 1111` is a published payment test card number and `example.com` is reserved for
+All IDs on the fixture page and in the test's answer are synthetic values chosen to pass their checksums
+(Verhoeff, Luhn) or structure checks; `4111 1111 1111 1111` is a published payment test card number and `example.com` is reserved for
 documentation. `privacy/fixture/face.jpg` is a downscaled copy of
 [File:Albert_Einstein_Head.jpg](https://commons.wikimedia.org/wiki/File:Albert_Einstein_Head.jpg) from Wikimedia
 Commons, which is in the public domain (published in the United States between 1931 and 1963 without a renewed

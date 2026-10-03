@@ -1,9 +1,12 @@
 // Privacy end-to-end test: the core promise of Privag AI is that no raw PII leaves the device.
 // Loads a fixture page full of synthetic PII (Aadhaar, PAN, card, phone, email, OTP, UPI, IFSC and a face
-// photo) in a real Chromium-based browser with the unpacked extension, runs one agent step through the real
+// photo) in a real Chromium-based browser with the unpacked extension, runs an agent task through the real
 // Flask server (backed by a local mock LLM), captures the exact bytes of every outbound request and asserts
 // that none of the PII strings appear in them -- neither in what the extension sends to the server, nor in
 // what the server sends to the LLM -- and that the masks in the sent image are solid.
+// Midway the agent asks which PAN to enter (ask_user) and the test answers in the side panel, as the user would.
+// The PAN in that answer must leave the device only as a placeholder, and the agent must still be able to use it:
+// it types the placeholder, and the vault puts the real PAN into the page's PAN field.
 //
 // Run:  cd tests; npm install; npm run test:privacy
 // Env:  BROWSER       Chrome/Chromium/Brave executable (default: common install paths)
@@ -30,7 +33,12 @@ const OUT = path.join(HERE, 'out');
 const require = createRequire(import.meta.url);
 const { validate: validateManifest } = require(path.join(EXTENSION, 'redaction-manifest.js'));
 
-// Every PII value on the fixture page or in the task, in the forms it could leak in
+// The agent's question, and the user's answer with a PAN that appears nowhere else
+const QUESTION = 'Which PAN should I enter?';
+const ANSWER_PAN = 'BNZPM2501F';
+const ANSWER = `Use ${ANSWER_PAN}`;
+
+// Every PII value on the fixture page, in the task or in the answer, in the forms it could leak in
 const PII = [
   '2345 6789 0124', '234567890124',            // Aadhaar
   'ABCPE1234F',                                 // PAN
@@ -40,6 +48,7 @@ const PII = [
   '482913',                                     // OTP
   'ravi.kumar@okicici',                         // UPI
   'SBIN0001234',                                // IFSC
+  ANSWER_PAN,                                   // PAN typed by the user as an answer to the agent
 ];
 const TASK = 'Check the KYC page. My card is 4111 1111 1111 1111, OTP 482913, PAN ABCPE1234F. Click Next.';
 
@@ -69,7 +78,7 @@ function findPython() {
   return fs.existsSync(venv) ? venv : 'python';
 }
 
-test('no raw PII leaves the device during an agent step', { timeout: 30 * 60 * 1000 }, async (t) => {
+test('no raw PII leaves the device during an agent task, answers to the agent included', { timeout: 30 * 60 * 1000 }, async (t) => {
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
   const cleanup = [];
@@ -84,18 +93,25 @@ test('no raw PII leaves the device during an agent step', { timeout: 30 * 60 * 1
   cleanup.push(async () => site.close());
   const pageUrl = `http://127.0.0.1:${site.address().port}/`;
 
-  // Mock OpenAI-compatible LLM: records exactly what the server sends; first reply clicks Next, then "done"
+  // Mock OpenAI-compatible LLM: records exactly what the server sends and replies by call number: 1 clicks Next,
+  // 2 asks which PAN to enter, 3 types the PAN from the user's answer into the PAN field, then "done"
   const llmBodies = [];
   const llm = await listen(async (req, res) => {
     const body = (await readBody(req)).toString('utf8');
     llmBodies.push(body);
     const request = JSON.parse(body);
-    const manifestText = request.messages[1].content.find((c) => c.type === 'text' && c.text.startsWith('Current Redaction Manifest')).text;
+    const textOf = (prefix) => request.messages[1].content.find((c) => c.type === 'text' && c.text.startsWith(prefix)).text;
+    const manifestText = textOf('Current Redaction Manifest');
     const manifest = JSON.parse(manifestText.slice(manifestText.indexOf('{')));
-    const next = manifest.dom_structure.elements.find((e) => e.name === 'Next')?.ref;
-    const action = llmBodies.length === 1 && next
-      ? { thought: 'Go to the next page', action: 'click', ref: next, target: 'Next' }
-      : { thought: 'Nothing left to do', action: 'done' };
+    const refOf = (name) => manifest.dom_structure.elements.find((e) => e.name === name)?.ref;
+    // The model only knows the answer's placeholder (ZZZZZ0002Z and the like), so that is what it types
+    const answered = textOf('Previous Actions History').match(/The user answered:[^"]*?\b(ZZZZZ\d{4}Z)\b/)?.[1];
+    const replies = {
+      1: refOf('Next') && { thought: 'Go to the next page', action: 'click', ref: refOf('Next'), target: 'Next' },
+      2: { thought: 'The PAN field is empty and the task does not say which PAN goes there', action: 'ask_user', question: QUESTION },
+      3: answered && refOf('PAN') && { thought: 'Enter the PAN the user gave', action: 'type', ref: refOf('PAN'), target: 'PAN', value: answered },
+    };
+    const action = replies[llmBodies.length] || { thought: 'Nothing left to do', action: 'done' };
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: JSON.stringify(action) } }] }));
   });
@@ -171,9 +187,19 @@ test('no raw PII leaves the device during an agent step', { timeout: 30 * 60 * 1
   // Run Agent first checks that the server answers, then creates the task
   for (let i = 0; i < 100 && !(await panel.evaluate(() => Boolean(task))); i++) await sleep(100);
   let state;
+  let asked = null;
   for (let i = 0; i < 240; i++) {
-    state = await panel.evaluate(() => ({ task: Boolean(task), runState, banner: document.getElementById('runBannerText').textContent }));
+    state = await panel.evaluate(() => ({ task: Boolean(task), runState, banner: document.getElementById('runBannerText').textContent,
+      answerBox: !document.getElementById('answerForm').hidden }));
     if (!state.task || state.runState === 'paused') break;
+    // The agent's question: answered once, in the side panel's answer box
+    if (state.runState === 'asking' && !asked) {
+      asked = state;
+      await panel.evaluate((answer) => {
+        document.getElementById('answerInput').value = answer;
+        document.querySelector('#answerForm button[type="submit"]').click();
+      }, ANSWER);
+    }
     await sleep(500);
   }
   const auditLog = await panel.evaluate(() => [...document.querySelectorAll('#auditLog .log-entry')].map((e) => e.textContent));
@@ -227,11 +253,25 @@ test('no raw PII leaves the device during an agent step', { timeout: 30 * 60 * 1
   }, image, regions.filter((r) => (r.method === 'solid_mask' || r.method === 'black_box') && r.bbox.w > 8 && r.bbox.h > 8));
   fills.forEach((f, i) => assert.ok(f >= 0.98, `mask ${i} is not solid (${(f * 100).toFixed(1)}% uniform)`));
 
+  // 4. The answer to the agent's question: shown and answered in the panel, sent (in check 1, never raw) only with
+  //    its PAN as a placeholder, and still usable: the vault typed the real PAN into the page's PAN field
+  assert.equal(asked?.banner, `The agent asks: ${QUESTION}`, 'the side panel did not show the agent\'s question');
+  assert.ok(asked.answerBox, 'the answer box was hidden while the agent asked');
+  const answered = steps.flatMap((r) => JSON.parse(r.body).history).find((h) => h.includes('The user answered:'));
+  assert.ok(answered, 'no history sent after the answer holds it');
+  const answerSent = JSON.parse(answered).result;
+  assert.match(answerSent, /^The user answered: Use ZZZZZ\d{4}Z$/, 'the answer should be sent with its PAN replaced by a placeholder');
+  assert.ok(llmBodies.some((b) => b.includes(answerSent)), 'the answer did not reach the LLM');
+  const fixturePage = (await browser.pages()).find((p) => p.url() === pageUrl);
+  assert.equal(await fixturePage.$eval('#pan', (el) => el.value), ANSWER_PAN, 'the PAN field should hold the real PAN from the answer');
+  assert.equal(await panel.evaluate(() => document.getElementById('answerInput').value), '', 'the raw answer should not stay in the side panel');
+
   fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify({
     outboundRequests: steps.length,
     serverToLlmRequests: llmBodies.length,
     piiStringsChecked: PII,
     regions: regions.map((r) => ({ type: r.type, method: r.method, source: r.source })),
     maskUniformity: fills.map((f) => Number(f.toFixed(4))),
+    answerSent,
   }, null, 2));
 });

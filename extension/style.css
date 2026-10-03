@@ -484,6 +484,28 @@ body {
   background: rgba(239, 68, 68, 0.1);
 }
 
+/* The agent's question: text on its own line, the answer box below it */
+.run-banner-ask {
+  flex-wrap: wrap;
+  border-color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.run-banner-answer {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.run-banner-answer[hidden] {
+  display: none;
+}
+
+.run-banner-answer .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .run-banner-text {
   font-size: 11px;
   color: var(--text-main);
