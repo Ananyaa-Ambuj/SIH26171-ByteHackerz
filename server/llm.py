@@ -195,9 +195,9 @@ def extract_json(text):
         start = text.find('{', start + 1)
     return None
 
-ACTIONS = ('click', 'type', 'scroll', 'wait', 'done')
+ACTIONS = ('click', 'type', 'scroll', 'wait', 'ask_user', 'done')
 INVALID_ACTION = {"action": "wait", "target": "Model reply was not a valid action"}
-_MAX_CHARS = {'thought': 1000, 'target': 200, 'value': 1000}
+_MAX_CHARS = {'thought': 1000, 'target': 200, 'value': 1000, 'question': 500}
 _REF = re.compile(r'\W*[eE]?([0-9]{1,6})\W*')
 _REF_IN_TARGET = re.compile(r'\W*[eE][0-9]{1,6}\W*')
 
@@ -212,7 +212,7 @@ def _is_coordinate(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0
 
 def normalize_action(reply):
-    """(action, None) when the reply is one usable action, else (None, why). Only the six documented keys
+    """(action, None) when the reply is one usable action, else (None, why). Only the seven documented keys
     survive, so the model cannot smuggle other fields (such as "confirmed") into what the extension runs."""
     if not isinstance(reply, dict):
         return None, "the reply has no JSON object"
@@ -245,6 +245,15 @@ def normalize_action(reply):
         action["value"] = value if value in ("up", "down") else "down"
     elif isinstance(value, str):
         action["value"] = value[:_MAX_CHARS["value"]]
+
+    if verb == "ask_user":
+        question = reply.get("question")
+        # Some models put the question where the other actions carry their text
+        if not (isinstance(question, str) and question.strip()):
+            question = value
+        if not (isinstance(question, str) and question.strip()):
+            return None, 'ask_user needs a "question"'
+        action["question"] = question.strip()[:_MAX_CHARS["question"]]
 
     if verb in ("click", "type") and "ref" not in action and "coordinates" not in action:
         return None, f"{verb} needs a ref or [x, y] coordinates"

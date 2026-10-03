@@ -413,9 +413,31 @@ class ModelReplyTests(ServerTestCase):
         self.assertEqual(data['action'], llm.INVALID_ACTION)
         self.assertIn('navigate', data['invalid_reason'])
 
+    def test_ask_user_carries_a_question(self):
+        """The agent can stop and ask the user for a missing detail; the side panel shows the question, so an
+        ask_user without one would leave the user staring at an empty prompt."""
+        data = self.action_for('{"action": "ask_user", "thought": "date missing", "question": " Which travel date? "}')
+        self.assertEqual(data['action'], {'action': 'ask_user', 'thought': 'date missing', 'question': 'Which travel date?'})
+        # Models that put the question in "value", as for type, are understood too
+        self.assertEqual(self.action_for('{"action": "ASK_USER", "value": "Which class?"}')['action']['question'],
+                         'Which class?')
+        for reply in ('{"action": "ask_user"}', '{"action": "ask_user", "question": "  "}',
+                      '{"action": "ask_user", "question": 5}'):
+            data = self.action_for(reply)
+            self.assertEqual(data['action'], llm.INVALID_ACTION, reply)
+            self.assertIn('question', data['invalid_reason'])
+        self.assertEqual(len(self.action_for('{"action": "ask_user", "question": "%s"}' % ('q' * 900))['action']['question']), 500)
+
+    def test_default_prompt_describes_every_action(self):
+        """The model can only use an action it is told about: every action the server accepts must be in the
+        default system prompt's JSON template."""
+        for verb in llm.ACTIONS:
+            self.assertIn(f'\\"{verb}\\"', json.dumps(llm.DEFAULTS['system_prompt']), verb)
+        self.assertIn('"question"', llm.DEFAULTS['system_prompt'])
+
     def test_smuggled_keys_are_dropped(self):
         """The model must not be able to set flags such as "confirmed" that the extension's action gate might
-        trust; only the six documented keys survive."""
+        trust; only the seven documented keys survive."""
         data = self.action_for('{"action": "click", "ref": "e2", "confirmed": true, "url": "https://evil.example",'
                                ' "thought": "pay now"}')
         self.assertEqual(set(data['action']), {'action', 'ref', 'thought'})
