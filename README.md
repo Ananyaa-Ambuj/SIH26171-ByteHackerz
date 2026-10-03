@@ -33,7 +33,7 @@ Measured on our test laptop (GTX 1650, headless Brave, mock model; [details](doc
 4. **Vision pass** (`client-vision/worker.js`): Florence-2 (ONNX, Transformers.js) in a Web Worker on WebGPU with a WASM fallback, run only on images, video, canvas, frames and embedded PDFs: faces (`<OD>`) and text (`<OCR_WITH_REGION>`). Skipped when none is on screen; a cached result is reused when their pixels are unchanged. The extension is cross-origin isolated, so the WASM fallback runs on up to 4 threads.
 5. **Canvas masking** (`extension/offscreen.js`): black boxes for passwords, OTPs, card and ID numbers and text in images; a solid grey mask for faces and profile photos; format-preserving fakes (`user_0001@example.com`, `90000 00001`) for values the agent may need. A redaction manifest `{type, method, source, bbox}` describes every mask and is schema-checked.
 6. **Masked text.** The task and the action history go through the same placeholder vault (memory only).
-7. **Server** (`server/`, Flask): validates the request, asks Gemma 4 (vLLM or Ollama, OpenAI-compatible API) and validates the reply into exactly one action: `{"action": "click|type|scroll|wait|done", "ref", "target", "coordinates", "value"}`.
+7. **Server** (`server/`, Flask): validates the request, asks Gemma 4 (vLLM or Ollama, OpenAI-compatible API) and validates the reply into exactly one action: `{"action": "click|type|scroll|wait|ask_user|done", "ref", "target", "coordinates", "value", "question"}`. `ask_user` puts a question to you in the side panel when the task lacks a detail only you can give.
 8. **Local gate and execution.** The action is checked on the device; a placeholder becomes the real value only in the field it belongs to; the action runs via `chrome.scripting.executeScript()`; repeat until `done`.
 
 Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · server API: [`docs/API.md`](docs/API.md)
@@ -116,7 +116,7 @@ What the code does today, claim by claim, against the idea submission.
 | Placeholder vault: memory only, real values only into their source field, cleared on tab close | Implemented | Cleared whenever the task ends (done, Stop, a new task, tab closed); kept while a task is paused. |
 | Actions through `chrome.scripting.executeScript()`, looping until done | Implemented | |
 | Flask REST/JSON server for Gemma 4 31B-it (quantized) via vLLM or Ollama | Partial | Server implemented and tested with a mock model. Not yet run against Gemma 4 here (no GPU large enough on the test machine). |
-| One JSON action per step: `{"action": "click\|type\|scroll\|wait\|done", "target", "coordinates"}` | Implemented | The server validates the reply into exactly one action (plus `ref`, `value`, `thought`). |
+| One JSON action per step: `{"action": "click\|type\|scroll\|wait\|done", "target", "coordinates"}` | Implemented | The server validates the reply into exactly one action (plus `ref`, `value`, `thought`). Beyond the submission: `ask_user` with a `question`, when the task lacks a detail only you can give. |
 | The server is never asked to guess masked content | Implemented | System prompt rule; the model only ever sees masks and look-alikes. |
 
 ## Measured results
@@ -147,7 +147,8 @@ Test results on the same machine, with the current code: 98 unit tests and 39 se
 What the code enforces, and what checks it:
 
 - **Pixels.** Only the masked JPEG leaves the browser. The raw screenshot goes from the side panel to the offscreen document by in-browser messaging and nowhere else. *Checked by:* the privacy test, which captures the exact request bytes.
-- **Text.** Page text and field values never leave the device. The manifest carries only types, methods, sources, boxes and look-alike values, and both sides reject any other key. Element names, the task and the action history go through the same vault. *Checked by:* the privacy test (11 PII strings searched in every request, extension → server and server → model), unit tests of the manifest schema.
+- **Text.** Page text and field values never leave the device. The manifest carries only types, methods, sources, boxes and look-alike values, and both sides reject any other key. Element names, the task and the action history go through the same vault. *Checked by:* the privacy test (12 PII strings searched in every request, extension → server and server → model), unit tests of the manifest schema.
+- **Answers to the agent.** When the agent asks you for a missing detail, your answer is masked like the task: PII in it is sent only as placeholders. *Checked by:* the privacy test, which answers with a PAN that must reach the page's PAN field and no request.
 - **Placeholders.** A look-alike typed by the model becomes the real value only in the field it was read from, or in a field whose purpose matches its type. Everywhere else the action is refused. The vault lives in memory only and is cleared when the task ends. *Checked by:* unit tests of the vault, the Brave and Firefox smoke tests.
 - **Actions.** No typing into password, OTP or CVV fields; no navigation or form submission off the start site; your click before any submit or payment. *Checked by:* unit tests of the gate, smoke tests.
 - **Fail-closed.** The frame is withheld when:

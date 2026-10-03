@@ -80,6 +80,7 @@ Every action from the server is checked on the device against a description of i
 "Run Agent" pins a task to the active tab and repeats: sanitize → POST `/api` → gate + vault → `chrome.scripting.executeScript` → wait for the page to settle.
 
 - **Pauses** (vault kept, Resume continues): switching to another tab, the tab leaving the start site, the vision model still loading (resumes by itself when ready), a server or LLM error, 3 steps in a row without progress, 15 steps without finishing.
+- **Asks** (`ask_user`, for a detail only the user can give): the side panel shows the model's question with an answer box and waits; nothing touches the page meanwhile. The answer goes through the vault like the task, so PII in it reaches the server only as placeholders, which become real values only in a matching field; it enters the history as `The user answered: …`. The raw answer is not kept in the panel. Switching tabs does not interrupt the question; the tab is checked again before the next step. Stop or Clear ends the task.
 - **Ends** (vault cleared): the model answers `done`, Stop, Clear, a new task, or the task's tab is closed.
 
 ### 2.7 Fail-closed rules

@@ -109,7 +109,7 @@ Every personal value in the request is masked or a synthetic look-alike: the ima
 | :--- | :---: | :---: | :--- |
 | `task` | `string` | **Yes** | Non-empty (not just whitespace), at most 4000 characters. |
 | `image` | `string` | **Yes** | Starts with `data:image/png;base64,` or `data:image/jpeg;base64,`, followed by non-empty base64. |
-| `history` | `string[]` | No (default `[]`) | At most 50 entries, each a string of at most 4000 characters (the extension sends each earlier action plus its `result`, serialized). |
+| `history` | `string[]` | No (default `[]`) | At most 50 entries, each a string of at most 4000 characters (the extension sends each earlier action plus its `result`, serialized; for `ask_user` the result is `The user answered: <answer>`, masked like the task). |
 | `manifest` | `object` | **Yes** | Must pass the redaction manifest schema below. |
 
 The body must be a JSON object (`Content-Type: application/json`) of at most 16 MiB. Any other top-level key is ignored and never forwarded.
@@ -157,23 +157,25 @@ One chat-completions request: `model`, a `system` message with the configured sy
 
 | Field | Type | Description |
 | :--- | :---: | :--- |
-| `action.action` | `string` | Always one of `click`, `type`, `scroll`, `wait`, `done` (lowercase). The extension's agent loop runs until `done`. |
+| `action.action` | `string` | Always one of `click`, `type`, `scroll`, `wait`, `ask_user`, `done` (lowercase). The extension's agent loop runs until `done`; `ask_user` waits for the user's answer to `question`. |
 | `action.thought` | `string` | The model's brief reasoning (at most 1000 characters). Optional. |
 | `action.ref` | `string` | Target element ref from `dom_structure.elements`, normalised to `e<number>`. Optional. |
 | `action.target` | `string` | Human-readable label of the target (at most 200 characters). Optional. |
 | `action.coordinates` | `[number, number]` | Fallback for targets without a ref: `[x, y]` in screenshot pixels. Optional. |
 | `action.value` | `string` | Text to type (or the dropdown option to pick) for `type`, at most 1000 characters; `up` or `down` for `scroll`. |
+| `action.question` | `string` | `ask_user` only, and always present there: the detail the agent needs from the user, trimmed, at most 500 characters. The side panel shows it with an answer box. |
 | `raw_response` | `string` | The model's reply text, verbatim. |
 | `timing.vlm_ms` | `integer` | Milliseconds measured around the request to the LLM. |
 | `invalid_reason` | `string` | Present only when the reply was not a usable action (see below). |
 
 **How the reply becomes one action.** The reply is parsed as JSON; if that fails, the first `{...}` object inside it is used (strings and nesting are respected, so prose or a code fence around the JSON is fine, and of two objects the first wins). A JSON list gives its first object. Then:
 
-- `action` is trimmed and lowercased and must be `click`, `type`, `scroll`, `wait` or `done`.
+- `action` is trimmed and lowercased and must be `click`, `type`, `scroll`, `wait`, `ask_user` or `done`.
 - `ref` is accepted as `"e7"`, `"[e7]"`, `"E7"` or `7` and returned as `"e7"`; an unparseable ref is dropped. A ref written only in `target` (e.g. `"[e12]"`) is also accepted, as the extension does.
 - `coordinates` are kept only as a list of two finite numbers `>= 0`.
 - `click` and `type` need a `ref` or `coordinates`; `type` needs a string `value`; `scroll` gets `value` `up` or `down` (anything else becomes `down`).
-- Every other key is dropped, so the model cannot add fields (such as `"confirmed": true`) to what the extension runs.
+- `ask_user` needs a non-blank `question`; a model that writes the question in `value` instead is understood too.
+- Only the seven documented keys (`thought`, `action`, `ref`, `target`, `coordinates`, `value`, `question`) are kept. Every other key is dropped, so the model cannot add fields (such as `"confirmed": true`) to what the extension runs.
 
 If the reply is empty, not JSON, or not a usable action, the response is still `200`, with a placeholder action and the reason:
 
@@ -182,7 +184,7 @@ If the reply is empty, not JSON, or not a usable action, the response is still `
   "action": { "action": "wait", "target": "Model reply was not a valid action" },
   "raw_response": "{\"action\": \"navigate\", \"target\": \"https://example.com\"}",
   "timing": { "vlm_ms": 0 },
-  "invalid_reason": "unknown action 'navigate'; expected one of click, type, scroll, wait, done"
+  "invalid_reason": "unknown action 'navigate'; expected one of click, type, scroll, wait, ask_user, done"
 }
 ```
 
