@@ -337,7 +337,9 @@ if __name__ == "__main__":
               file=sys.stderr)
 
     shown_host = f"[{host}]" if ":" in host else host
-    print(f"Privag AI server listening on http://{shown_host}:{port}", flush=True)
+    print(f"Privag AI server listening on {shown_host}:{port}", flush=True)
+    # 0.0.0.0 is an address to listen on, not one to open: the setup page answers only at localhost
+    print(f"Setup page (on this computer only): http://localhost:{port}/", flush=True)
     # Once only: with PRIVAG_DEBUG=1 the reloader runs this file again in a child process (WERKZEUG_RUN_MAIN)
     if os.environ.get("PRIVAG_OPEN_DASHBOARD", "1") != "0" and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
         threading.Thread(target=open_dashboard_when_ready, args=(host, port), daemon=True).start()
