@@ -141,6 +141,14 @@ class CorsAndLocalOnlyTests(ServerTestCase):
         self.assertEqual(res.status_code, 403)
         self.assertIn('error', res.get_json())
 
+    def test_refusal_names_the_working_url(self):
+        """With PRIVAG_HOST=0.0.0.0, opening http://0.0.0.0:5000/ or the LAN address is refused; the error must say
+        which address does work, with the real port, instead of a "<port>" placeholder."""
+        res = self.client.get('/', base_url='http://0.0.0.0:5123/')
+        self.assertEqual(res.status_code, 403)
+        self.assertIn('http://localhost:5123/', res.get_json()['error'])
+        self.assertNotIn('<port>', res.get_json()['error'])
+
     def test_model_info_hides_endpoint_from_other_machines(self):
         """The LLM endpoint can be an internal address; only the model name is public."""
         self.write_config({'llm_url': f'http://{LLM_HOST}:11434/v1'})
@@ -497,6 +505,49 @@ class LLMFailureTests(ServerTestCase):
             res, _ = self.failing_step(**kwargs)
             self.assertEqual(res.status_code, 502, kwargs)
             self.assertNotIn(LLM_HOST, res.get_data(as_text=True))
+
+
+class EnvFileTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.path = os.path.join(tmp.name, '.env')
+        # Whatever load_env_file adds to the environment is removed again after each test
+        patcher = mock.patch.dict(os.environ, {})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for name in ('PRIVAG_PORT', 'PRIVAG_LLM_MODEL', 'PRIVAG_HOST'):
+            os.environ.pop(name, None)
+
+    def write(self, text):
+        with open(self.path, 'w', encoding='utf-8') as f:
+            f.write(text)
+
+    def test_env_file_settings_reach_the_server(self):
+        """.env.example tells users to copy it to server/.env: the values there must take effect, including the
+        port and host that are read before the server starts."""
+        self.write('PRIVAG_PORT=5123\nPRIVAG_LLM_MODEL=gemma4:12b\n')
+        self.assertTrue(server.load_env_file(self.path))
+        self.assertEqual(os.environ['PRIVAG_PORT'], '5123')
+        self.assertEqual(llm.env_overrides()['llm_model'], 'gemma4:12b')
+
+    def test_real_environment_wins_over_env_file(self):
+        """A variable set for one run ($env:PRIVAG_PORT=5001) must not be undone by an old value in the file."""
+        os.environ['PRIVAG_PORT'] = '5001'
+        self.write('PRIVAG_PORT=5123\n')
+        server.load_env_file(self.path)
+        self.assertEqual(os.environ['PRIVAG_PORT'], '5001')
+
+    def test_empty_entries_count_as_unset(self):
+        """A copied .env.example has every variable empty; that must keep the defaults, not blank them out."""
+        self.write('PRIVAG_HOST=\nPRIVAG_LLM_MODEL=\n')
+        server.load_env_file(self.path)
+        self.assertNotIn('llm_model', llm.env_overrides())
+        self.assertEqual(os.environ.get('PRIVAG_HOST') or '127.0.0.1', '127.0.0.1')
+
+    def test_missing_env_file_is_fine(self):
+        """server/.env is optional."""
+        self.assertFalse(server.load_env_file(self.path))
 
 
 class FilesTests(ServerTestCase):

@@ -63,7 +63,7 @@ On Linux/macOS use `.venv/bin/python`. The server listens on `http://127.0.0.1:5
 | `PRIVAG_DEBUG` | off | `1` enables Flask debug mode (never on a shared network) |
 | `PRIVAG_OPEN_DASHBOARD` | `1` | the server opens its setup page in your browser when it starts; `0` skips that |
 
-`server/.env.example` documents the same variables; the server reads the process environment and does not load `.env` files. To serve Gemma 4 with Ollama: `ollama pull gemma4:31b-it-q4_K_M`, then start the server as above.
+To keep settings in a file, copy `server/.env.example` (which documents every variable) to `server/.env` and fill it in: the server loads it at startup, and a variable set in your shell wins over it. Values from the environment or `.env` also win over the dashboard. With `PRIVAG_HOST=0.0.0.0` other machines can reach the agent API, but the setup page still opens only at `http://localhost:5000/` on the server's own machine. To serve Gemma 4 with Ollama: `ollama pull gemma4:31b-it-q4_K_M`, then start the server as above.
 
 ### 2. Extension — Chrome, Edge or Brave
 

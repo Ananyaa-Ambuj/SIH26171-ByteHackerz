@@ -37,7 +37,7 @@ The effective config is built per request, in this order (later wins):
 
 1. `server/config.default.json` (tracked, no secrets): `llm_url`, `llm_api_key` (empty), `llm_model`, `llm_timeout` (seconds, default 600), `system_prompt`.
 2. `server/config.json` (gitignored): what the dashboard saves. Only the keys that differ from the defaults are stored. A missing file means no overrides; a corrupt file, unknown key or wrongly typed value is skipped with a warning on stderr.
-3. Environment variables (an empty variable counts as unset; an invalid value is ignored with a warning):
+3. Environment variables, from the shell or from `server/.env` (an empty variable counts as unset; an invalid value is ignored with a warning):
 
 | Variable | Default | Meaning |
 | :--- | :--- | :--- |
@@ -50,7 +50,7 @@ The effective config is built per request, in this order (later wins):
 | `PRIVAG_DEBUG` | off | `1` turns on the Werkzeug debugger (tracebacks with source, interactive console). Development only. |
 | `PRIVAG_OPEN_DASHBOARD` | `1` | The server opens its setup page in the default browser once it accepts connections; `0` skips that. |
 
-The server reads only the process environment; it does not load `.env` files (`server/.env.example` documents every variable). Settings never live in `server/static/`, which Flask serves publicly.
+`python app.py` loads `server/.env` (a copy of `server/.env.example`, which documents every variable) before it reads any setting, from whatever folder it is started; a variable already set in the shell wins over the file. Settings never live in `server/static/`, which Flask serves publicly.
 
 ---
 
@@ -229,7 +229,7 @@ Shows the configured model. The `endpoint` field is included only for requests f
 
 ### 3.1 Local-only access
 
-`GET /` (the dashboard page) and `GET`/`POST /api/config` answer only when all of these hold; otherwise `403 {"error": "Only available from this machine, at http://localhost:<port>/"}`:
+`GET /` (the dashboard page) and `GET`/`POST /api/config` answer only when all of these hold; otherwise `403 {"error": "The setup page only answers on the computer that runs the server: open http://localhost:5000/ in a browser there"}` (with the server's real port). So with `PRIVAG_HOST=0.0.0.0`, `http://0.0.0.0:5000/` and the machine's LAN address are refused, while `http://localhost:5000/` on the same machine works:
 
 - the client address is loopback (`127.0.0.0/8` or `::1`);
 - the `Host` header names `localhost`, `127.0.0.1` or `::1` (stops DNS rebinding, where an attacker's domain re-resolves to `127.0.0.1`);

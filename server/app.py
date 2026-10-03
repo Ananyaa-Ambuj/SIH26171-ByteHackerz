@@ -44,7 +44,10 @@ def is_local_request():
 
 def local_only_error():
     if not is_local_request():
-        return jsonify({"error": "Only available from this machine, at http://localhost:<port>/"}), 403
+        # SERVER_PORT is the port the server listens on, whatever address the client used to reach it
+        url = f"http://localhost:{request.environ.get('SERVER_PORT', '5000')}/"
+        return jsonify({"error": f"The setup page only answers on the computer that runs the server: open {url} "
+                                 "in a browser there"}), 403
     return None
 
 @app.route('/')
@@ -280,6 +283,21 @@ def too_large(e):
 def internal_error(e):
     return jsonify({"error": "Internal server error"}), 500
 
+ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+
+def load_env_file(path=ENV_FILE):
+    """Loads server/.env (a copy of .env.example) into the environment, whatever the working directory. Variables
+    already set in the environment win over the file. Returns whether the file set any variable."""
+    if not os.path.isfile(path):
+        return False
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        print(f"WARNING: {path} was not loaded: python-dotenv is not installed (pip install -r requirements.txt)",
+              file=sys.stderr)
+        return False
+    return load_dotenv(path, override=False)
+
 def open_dashboard_when_ready(host, port):
     """Opens the setup page in the default browser as soon as the server accepts connections, so a first-time user
     lands on it without looking for the URL. The page answers on this machine only, hence a loopback address."""
@@ -297,6 +315,8 @@ def open_dashboard_when_ready(host, port):
     webbrowser.open(url)
 
 if __name__ == "__main__":
+    # Before any setting is read. Only when run as the server, so importing app (as the tests do) never reads .env
+    load_env_file()
     # Loopback only and no debugger by default: debug mode shows source and paths on every error and offers a
     # console, and 0.0.0.0 would hand both (and the API) to everyone on the network
     host = os.environ.get("PRIVAG_HOST") or "127.0.0.1"
@@ -321,6 +341,6 @@ if __name__ == "__main__":
     # Once only: with PRIVAG_DEBUG=1 the reloader runs this file again in a child process (WERKZEUG_RUN_MAIN)
     if os.environ.get("PRIVAG_OPEN_DASHBOARD", "1") != "0" and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
         threading.Thread(target=open_dashboard_when_ready, args=(host, port), daemon=True).start()
-    # load_dotenv=False: settings come only from the process environment (see .env.example), even when
-    # python-dotenv happens to be installed
+    # load_dotenv=False: server/.env is already loaded above. Flask's own loader would run only now, after the
+    # settings above were read, and would search the working directory and its parents (and load .flaskenv too)
     app.run(host=host, port=port, debug=debug, load_dotenv=False)
