@@ -140,7 +140,8 @@ async function main() {
     const flaskPort = await freePort();
     const flask = spawn(findPython(), ['app.py'], {
       cwd: path.join(REPO, 'server'),
-      env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_LLM_URL: llmUrl, PRIVAG_LLM_MODEL: llmModel, PRIVAG_LLM_API_KEY: process.env.LLM_API_KEY || '', PRIVAG_OPEN_DASHBOARD: '0' },
+      // PYTHON_DOTENV_DISABLED: a developer's server/.env must not change what is measured
+      env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_LLM_URL: llmUrl, PRIVAG_LLM_MODEL: llmModel, PRIVAG_LLM_API_KEY: process.env.LLM_API_KEY || '', PRIVAG_OPEN_DASHBOARD: '0', PYTHON_DOTENV_DISABLED: '1' },
     });
     cleanup.push(async () => { flask.kill(); });
     for (let i = 0; i < 100; i++) {

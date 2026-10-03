@@ -117,11 +117,12 @@ test('no raw PII leaves the device during an agent task, answers to the agent in
   });
   cleanup.push(async () => llm.close());
 
-  // The real Flask server, configured by environment variables only
+  // The real Flask server, configured by environment variables only (PYTHON_DOTENV_DISABLED: not by a developer's
+  // server/.env)
   const flaskPort = await freePort();
   const flask = spawn(findPython(), ['app.py'], {
     cwd: path.join(REPO, 'server'),
-    env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_LLM_URL: `http://127.0.0.1:${llm.address().port}/v1`, PRIVAG_LLM_MODEL: 'mock', PRIVAG_LLM_API_KEY: '', PRIVAG_OPEN_DASHBOARD: '0' },
+    env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_LLM_URL: `http://127.0.0.1:${llm.address().port}/v1`, PRIVAG_LLM_MODEL: 'mock', PRIVAG_LLM_API_KEY: '', PRIVAG_OPEN_DASHBOARD: '0', PYTHON_DOTENV_DISABLED: '1' },
   });
   let flaskLog = '';
   flask.stdout.on('data', (d) => (flaskLog += d));
