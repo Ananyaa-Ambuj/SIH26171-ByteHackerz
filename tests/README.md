@@ -106,3 +106,12 @@ Not a test: it measures per-stage latency and peak memory over real agent steps 
 `STEPS`, `PHOTO` (`moving`, `still` or `none`: vision runs every step, once then from the cache, or never),
 `BROWSER_ARGS` (`--disable-gpu` forces the WASM fallback), `LABEL` and `LLM_URL`/`LLM_MODEL`/`LLM_API_KEY` for a real
 model. [`docs/BENCHMARKS.md`](../docs/BENCHMARKS.md) describes the method and every committed run.
+
+## Task evaluation (`../bench/eval.mjs`)
+
+Not a test either: it needs a real model. It runs the agent on six tasks on `demo/index.html` (fill fields from the
+task, ask the user, leave the password to the user, wait for the user's click before paying, stay on the site),
+checks each outcome in the page and searches every request for raw PII. It uses the model the server is configured
+with, or `LLM_URL`/`LLM_MODEL`/`LLM_API_KEY`; `REPEATS` runs each task several times and `TASKS` picks some. The same
+`BROWSER`, `PRIVAG_PYTHON`, `PROFILE_DIR`, `MODEL_TIMEOUT_S`, `BROWSER_ARGS` and `LABEL` variables apply.
+[`docs/EVALUATION.md`](../docs/EVALUATION.md) lists the tasks and what counts as a pass.

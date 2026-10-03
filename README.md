@@ -40,7 +40,7 @@ Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · server API: [`docs/AP
 
 ## Run it
 
-**Two-minute check, no server and no model needed:** load the extension (section 2 or 3 below), open any page with personal data on it, open the Privag side panel and press **Sanitize Only**. The panel shows the masked frame exactly as the agent would send it, and the audit log lists what was masked. Running the agent itself needs the server (section 1) and a vision-language model behind it; until the server answers, the side panel shows how to start it.
+**Two-minute check, no server and no model needed:** load the extension (section 2 or 3 below), open a page with personal data on it, open the Privag side panel and press **Sanitize Only**. The demo page has synthetic data of every kind: from the repository root run `python -m http.server 8080` and open `http://localhost:8080/demo/` (its **Hide photo** and **Start ticker** buttons show the vision pass being skipped and a changing page being withheld). The panel shows the masked frame exactly as the agent would send it, and the audit log lists what was masked. Running the agent itself needs the server (section 1) and a vision-language model behind it; until the server answers, the side panel shows how to start it.
 
 ### 1. Server (Python 3.11+)
 
@@ -89,9 +89,10 @@ node --test "tests/unit/*.test.mjs"                         # validators, action
 cd server && .venv/Scripts/python -m unittest discover -s tests   # server contract and security fixes
 cd tests && npm install && npm run test:privacy               # privacy end-to-end test (needs a Chromium-based browser)
 node bench/bench.mjs                                          # per-stage latency and peak memory -> bench/results/
+node bench/eval.mjs                                           # six agent tasks on the demo page with a real model
 ```
 
-The benchmark's options (`STEPS`, `PHOTO`, `BROWSER_ARGS`, a real model via `LLM_URL`) are described at the top of `bench/bench.mjs` and in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
+The benchmark's options (`STEPS`, `PHOTO`, `BROWSER_ARGS`, a real model via `LLM_URL`) are described at the top of `bench/bench.mjs` and in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md). `bench/eval.mjs` runs the agent with the model the server is configured with (or `LLM_URL`/`LLM_MODEL`/`LLM_API_KEY`), checks each task's outcome in the page and searches every request for raw PII.
 
 [`tests/README.md`](tests/README.md) explains each suite and its environment variables.
 
@@ -140,7 +141,7 @@ Measured on 2026-10-02 with `bench/bench.mjs`: a laptop with an Intel Core i5-10
 
 The threading change cut the CPU-only vision pass from 93.5 s and 103.1 s to 29.0 s and 48.1 s. On WebGPU it brought no gain: in four alternating pairs of runs, vision medians were 2.96–3.90 s with it and 2.88–3.09 s without, slower with it in 3 of the 4 pairs. That difference is within the noise of a busy machine, but it may be a small cost.
 
-Test results on the same machine, with the current code: 98 unit tests and 39 server tests pass; the privacy test and the race test pass in Brave. The smoke tests were run from a scratch harness outside the repository: Brave passed 28/28; headless Firefox 157 passed 36/36 with vision on WASM, in a run made before the threading change (Firefox has since been uninstalled from the test machine).
+Test results on the same machine, with the current code: 98 unit tests and 46 server tests pass; the privacy test and the race test pass in Brave. The smoke tests were run from a scratch harness outside the repository: Brave passed 28/28; headless Firefox 157 passed 36/36 with vision on WASM, in a run made before the threading change (Firefox has since been uninstalled from the test machine).
 
 ## Privacy guarantees
 
@@ -159,7 +160,7 @@ What the code enforces, and what checks it:
   - the manifest fails its schema.
 
   Text inside frames and embedded PDFs, which the DOM pass cannot read, is blacked out line by line, and whole media areas are blacked out when OCR output was cut off. *Checked by:* the race test (live feed, script-driven ticker, CSS animation, dense frame), the privacy test.
-- **Server.** It listens on 127.0.0.1 with the debugger off. It sends no CORS headers, so web pages cannot read its answers. Its config endpoint answers only local requests and never returns the API key. Every request and every model reply is validated. *Checked by:* 39 server unit tests.
+- **Server.** It listens on 127.0.0.1 with the debugger off. It sends no CORS headers, so web pages cannot read its answers. Its config endpoint answers only local requests and never returns the API key. Every request and every model reply is validated. *Checked by:* 46 server unit tests.
 
 ## Known limitations
 
@@ -168,7 +169,7 @@ What the code enforces, and what checks it:
 - **Not read by the DOM pass:** text drawn with CSS `::before`/`::after`.
 - **Pages that change faster than every 100 ms** (live feeds, script-driven tickers) are withheld on every step, so the agent stops on them.
 - **Script navigations:** a page script can navigate without a link; the gate cannot see that in advance, so the task pauses when the tab has left the site.
-- **Not yet measured:** detection recall and precision on a labelled set, a full step with Gemma 4, and Chrome/Edge (only Brave was tested).
+- **Not yet measured:** detection recall and precision on a labelled set, agent task success and step time with Gemma 4 (`bench/eval.mjs` is ready; no real model has been run through it yet), and Chrome/Edge (only Brave was tested).
 - **Firefox speed:** our Firefox run used the WASM fallback, which is far slower than WebGPU, and Firefox does not support the manifest keys that give that fallback its threads.
 - **CPU-only devices:** a step that shows new images still takes tens of seconds without WebGPU (29.0–48.1 s per vision pass on our 4-core laptop).
 
@@ -180,7 +181,8 @@ What the code enforces, and what checks it:
 | `client-vision/` | source of the vision worker (`worker.js`, `ocr-pii.js`) and a standalone test page |
 | `server/` | Flask server, default config, dashboard, unit tests |
 | `tests/` | unit tests, the privacy end-to-end test and the race test |
-| `bench/` | benchmark script, fixture page and raw results |
+| `bench/` | benchmark and task-evaluation scripts, fixture page and raw results |
+| `demo/` | a demo page with synthetic personal data, for trying the extension and recording the demo |
 | `docs/` | architecture, server API, benchmarks, evaluation mapping |
 
 ## License
