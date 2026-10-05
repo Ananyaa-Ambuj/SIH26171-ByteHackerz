@@ -29,7 +29,7 @@ Any OpenAI-compatible chat-completions endpoint that accepts image input. The de
 | Ollama (default) | `http://localhost:11434/v1` | `gemma4:31b-it-q4_K_M` (`ollama pull gemma4:31b-it-q4_K_M`) |
 | vLLM | `http://localhost:8000/v1` (vLLM's default port) | `google/gemma-4-31B-it` |
 
-Model latency with Gemma 4 31B-it: not yet measured.
+Model latency with Gemma 4 31B (Ollama `gemma4:31b` on a server on the local network, 2026-10-05): 6.91 s median per step (p90 7.69 s) in the benchmark, 9.49 s median (p90 22.34 s) in the task evaluation; see [`BENCHMARKS.md`](BENCHMARKS.md#5-with-gemma-4-31b). Through vLLM: not yet measured.
 
 ### Configuration
 
@@ -151,7 +151,7 @@ One chat-completions request: `model`, a `system` message with the configured sy
     "value": "ZZZZZ0001Z"
   },
   "raw_response": "```json\n{\"thought\": \"The PAN field is empty; ...\", \"action\": \"type\", \"ref\": \"e3\", ...}\n```",
-  "timing": { "vlm_ms": 0 }   // placeholder: measured for every request; real Gemma 4 latency is not yet measured
+  "timing": { "vlm_ms": 0 }   // placeholder: measured for every request (see BENCHMARKS.md section 5 for Gemma 4 31B)
 }
 ```
 
@@ -164,6 +164,7 @@ One chat-completions request: `model`, a `system` message with the configured sy
 | `action.coordinates` | `[number, number]` | Fallback for targets without a ref: `[x, y]` in screenshot pixels. Optional. |
 | `action.value` | `string` | Text to type (or the dropdown option to pick) for `type`, at most 1000 characters; `up` or `down` for `scroll`. |
 | `action.question` | `string` | `ask_user` only, and always present there: the detail the agent needs from the user, trimmed, at most 500 characters. The side panel shows it with an answer box. |
+| `action.summary` | `string` | `done` only, optional: one sentence for the user on what was done or why it could not be done, trimmed, at most 500 characters. The side panel announces it in a "Task complete: …" banner. |
 | `raw_response` | `string` | The model's reply text, verbatim. |
 | `timing.vlm_ms` | `integer` | Milliseconds measured around the request to the LLM. |
 | `invalid_reason` | `string` | Present only when the reply was not a usable action (see below). |
@@ -175,7 +176,8 @@ One chat-completions request: `model`, a `system` message with the configured sy
 - `coordinates` are kept only as a list of two finite numbers `>= 0`.
 - `click` and `type` need a `ref` or `coordinates`; `type` needs a string `value`; `scroll` gets `value` `up` or `down` (anything else becomes `down`).
 - `ask_user` needs a non-blank `question`; a model that writes the question in `value` instead is understood too.
-- Only the seven documented keys (`thought`, `action`, `ref`, `target`, `coordinates`, `value`, `question`) are kept. Every other key is dropped, so the model cannot add fields (such as `"confirmed": true`) to what the extension runs.
+- `done` keeps a non-blank `summary`; without one it is still a valid `done`.
+- Only the eight documented keys (`thought`, `action`, `ref`, `target`, `coordinates`, `value`, `question`, `summary`) are kept. Every other key is dropped, so the model cannot add fields (such as `"confirmed": true`) to what the extension runs.
 
 If the reply is empty, not JSON, or not a usable action, the response is still `200`, with a placeholder action and the reason:
 

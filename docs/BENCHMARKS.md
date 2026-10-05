@@ -1,6 +1,6 @@
 # Privag AI — Benchmarks
 
-Every figure on this page comes from `bench/bench.mjs`; the raw output of each run is committed in [`bench/results/`](../bench/results/). Anything this script does not measure is listed at the end as **not yet measured**.
+Every figure on this page comes from `bench/bench.mjs` (and, in section 5, `bench/eval.mjs`); the raw output of each run is committed in [`bench/results/`](../bench/results/). Anything this script does not measure is listed at the end as **not yet measured**.
 
 ## How it is measured
 
@@ -104,9 +104,29 @@ In the four alternating pairs (a–d) the isolated build's vision median was slo
 
 Model files in the extension's cache: **343.0 MiB** for the WebGPU set (`vision_encoder_fp16` 175.4, `embed_tokens_fp16` 75.1, `decoder_model_merged_q4` 61.4, `encoder_model_q4` 28.7, tokenizer and configs 2.4). The WASM fallback downloads another **227.8 MiB** (`embed_tokens_q4` 150.3, `vision_encoder_q4` 77.5).
 
+### 5. With Gemma 4 31B
+
+2026-10-05, current code (the extension is cross-origin isolated). The model is Ollama's `gemma4:31b` on a server on the local network; its hardware and load were not recorded. The client is the same laptop, now with Brave on Chromium 154.0.8037.98. `PHOTO=moving`, so vision ran on every step; the model clicked "Next" on every step until the loop's 15-step limit paused the task.
+
+| Stage | Gemma 4 31B (15 steps) |
+| --- | --- |
+| settle | 309 (317) |
+| dom | 4 (6) |
+| capture | 39 (51) |
+| vision | 2044 (2082) |
+| mask | 17 (20) |
+| network | 9 (12) |
+| **vlm (Gemma 4 31B)** | **6908 (7689)** |
+| execute | 2 (5) |
+| **step** | **9467** (p90 10132, max 11275) |
+
+Model load from the browser cache 20.8 s. Peak memory: the page's tab 25.6 MiB, extension processes 1087.2 MiB, GPU process 1494.6 MiB, all browser processes 2584.2 MiB.
+
+The task evaluation (`bench/eval.mjs`, same day, same model) measured the model's reply over 39 steps of six different tasks: median 9491 ms, p90 22336 ms, min 5581 ms, max 28723 ms. Its task results are in [`EVALUATION.md`](EVALUATION.md).
+
 ## Raw output
 
-All in [`bench/results/`](../bench/results/), file names `2026-10-02-gtx1650-brave-<label>.json`, made with `LABEL=gtx1650-brave-<label>`:
+All in [`bench/results/`](../bench/results/), file names `<date>-gtx1650-brave-<label>.json`, made with `LABEL=gtx1650-brave-<label>` (2026-10-02 unless noted):
 
 | Label | Command (besides `LABEL`) | Section |
 | --- | --- | --- |
@@ -118,12 +138,14 @@ All in [`bench/results/`](../bench/results/), file names `2026-10-02-gtx1650-bra
 | `webgpu-not-isolated-a` … `-d` | the same, with the previous `extension/manifest.json` | 3 |
 | `webgpu-photo-still` | `STEPS=10 PHOTO=still node bench/bench.mjs` | 1 |
 | `webgpu-photo-none` | `STEPS=10 PHOTO=none node bench/bench.mjs` | 1 |
+| `webgpu-gemma4-31b` (2026-10-05) | `STEPS=10 LLM_URL=<the server's Ollama URL> LLM_MODEL=gemma4:31b LLM_API_KEY=<key> node bench/bench.mjs` | 5 |
+| `2026-10-05-eval-gemma4-31b.json` | `REPEATS=3 node bench/eval.mjs` (the server's own model settings) | 5, EVALUATION.md |
 
 Each file holds every step's timings, every memory sample (per process) and the list of cached model files. The files from before the `PHOTO` option (`webgpu-run1`, `webgpu-run2`, `wasm`) have no `photo` or `stepSumMs` fields; their steps sum the same way.
 
 ## Not yet measured
 
-- A full step with **Gemma 4** (the server's model call was a mock in every run above).
+- **Gemma 4 through vLLM**, and the model server's own hardware and load (section 5 used Ollama on a server whose hardware was not recorded).
 - **PII detection recall and precision** on a labelled data set (for example WebPII).
 - **Re-OCR check** of our own masked frames ("no PII readable after masking").
 - First-run model **download time** (depends on the network).
