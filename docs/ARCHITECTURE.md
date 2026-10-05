@@ -2,9 +2,7 @@
 
 ## Overview
 
-A browser agent normally streams raw screenshots to a server-side model. Privag AI splits the agent in two: everything that sees raw pixels or raw text runs inside the browser extension, and the server only ever receives a masked frame, a redaction manifest, a masked task and a masked action history. The server plans one action per step; the extension checks it locally and executes it.
-
-The vision model is the expensive part of a step, so it runs only where the DOM pass cannot read: on the images, video, canvas, frames and embedded PDFs on screen, and only when their pixels have changed. A step with no such media skips it; a step whose media is unchanged reuses the earlier result. Measured costs of each case are in [`BENCHMARKS.md`](BENCHMARKS.md#1-conditional-vision).
+Everything that sees raw pixels or text runs in the browser extension; the server only receives a masked frame, a redaction manifest, a masked task and a masked history, and returns one action, which the extension checks and runs. The vision model runs only on media the DOM cannot read, and only when its pixels changed ([costs](BENCHMARKS.md#1-conditional-vision)).
 
 ---
 
@@ -35,20 +33,20 @@ What never crosses: the raw screenshot, field values, page text, the real values
 
 Injected into the task's tab with `chrome.scripting.executeScript`; the side panel then calls its functions the same way.
 
-1. **Visible text.** Text nodes are grouped by their nearest block-level element and validated as one string, so a value split over inline elements (`<b>2345</b> 6789 0124`) is still found. Line breaks, images and inline-block boxes end a group, and every text node is also checked on its own, so a value glued to its neighbour (`<span>Mobile</span><span>9123456789</span>`) is found too. Text that CSS shows in capitals is checked in capitals. Each match is boxed with a `Range` (one box per line).
-2. **Validators, not regexes.** A candidate pattern only proposes a span; the type's validator decides: Aadhaar (12 digits, first digit 2-9, Verhoeff check digit), card numbers (13-19 digits, Luhn), PAN (`AAAAA9999A` with a valid holder-type letter), Indian mobile numbers (optional `+91`/`0091`/`0`, first digit 6-9), UPI IDs (`handle@psp`, no dot in the PSP part), IFSC (`AAAA0XXXXXX`), emails, and OTPs only next to an OTP label ("OTP: 482913", "482913 is your OTP"). Numbers are read as runs of digit groups and every stretch of whole groups is tried, so two numbers printed side by side are each found. A number that fails its checksum is left alone.
-3. **Form fields by purpose.** Password inputs, `autocomplete` tokens (`one-time-code`, `current-password`, `cc-number`, `cc-csc`, other `cc-*`, `tel*`, `email`, `name`, …) and name/id/label hints, split into words first (`otp_code`, `txtCVV`, `upiPin`), decide a field's type whatever its value. Passwords, OTPs, CVVs, PINs and other card fields are never read: the field is just blacked out, and a password field stays one after "show password". A value that is wholly one PII value, or sits in a field with a purpose, gets a placeholder; any other text holding PII (a note with a phone number and an email) is blacked out without being read. Autofilled fields are masked even when the page cannot read their value yet; a `<select>` is masked when the option it shows is PII; PII in a placeholder or a button label is blacked out.
+1. **Visible text.** Text is validated per block, so a value split over inline elements (`<b>2345</b> 6789 0124`) is found, and per text node, so a value glued to its neighbour is found too. Each match is boxed with a `Range`.
+2. **Validators, not regexes.** A pattern only proposes a span; the validator decides: Aadhaar (Verhoeff), cards (13–19 digits, Luhn), PAN (holder-type letter), Indian mobile (`+91`/`0091`/`0`, first digit 6–9), UPI (no dot in the PSP), IFSC, email, and OTPs only next to an OTP label. A number that fails its checksum is left alone.
+3. **Form fields by purpose.** `type`, `autocomplete` tokens and label/name hints (`otp_code`, `txtCVV`) decide a field's type whatever its value. Passwords, OTPs, CVVs and PINs are never read, only blacked out. A field value that is one PII value gets a placeholder; other text holding PII is blacked out unread. Autofilled fields, `<select>`s showing PII and PII in placeholders or button labels are masked too.
 4. **Profile photos.** Images whose `alt`/class/id/src mention an avatar or profile photo get a solid mask without waiting for vision.
 5. **Media for Pass 2.** Images, video, canvas and CSS background images (except small square icons; a wide, thin canvas with a line of text still counts) are reported for vision; iframes, frames, embeds and objects (including PDFs, which the browser shows inside an embed) are reported as *unscannable*, because the DOM pass cannot read inside them.
 6. **Interactive elements.** Buttons, links, fields and ARIA widgets in view get refs (`e1`, `e2`, …) that the model targets instead of guessing pixels. Their names go through the same vault as everything else.
-7. **MutationObserver and a still page.** A sequence number is bumped on every DOM mutation (open and closed shadow roots included), input, scroll and resize. CSS animations, transitions and Web Animations, which move content without any mutation, are paused from before the scan until after the screenshot. The side panel waits until the page has been quiet for a moment, scans, captures, and uses the frame only if the DOM was still from 100 ms before the scan until after the screenshot. Otherwise it tries again; after 3 tries the frame is withheld.
+7. **MutationObserver and a still page.** Every mutation (shadow roots included), input, scroll and resize bumps a counter; animations are paused around the capture. A frame is used only if the DOM was still from 100 ms before the scan until after the screenshot; otherwise the step retries, and after 3 tries the frame is withheld.
 
 ### 2.2 Pass 2: Florence-2 vision (`client-vision/worker.js` → `extension/florence-worker.bundle.js`)
 
 - Runs in a Web Worker through Transformers.js and ONNX Runtime on WebGPU, with a WASM fallback (at load time, and again if a WebGPU inference fails). In Chrome/Brave the worker lives in the offscreen document; Firefox has no offscreen API, so the side panel hosts the same page in a hidden iframe.
 - Looks only at the media regions from Pass 1, cut out of the screenshot onto a white canvas. No media on screen means the pass is skipped; media whose pixels are unchanged since a recent step reuses the cached result.
-- On WASM, ONNX Runtime runs on several threads (up to 4; it takes half the logical cores) only in a cross-origin isolated page. The manifest therefore sets `cross_origin_embedder_policy: require-corp` and `cross_origin_opener_policy: same-origin`. As a result, extension pages can only load cross-origin resources that allow it (CORS or `Cross-Origin-Resource-Policy`); today they load none. Firefox does not support these two keys, so its WASM fallback is expected to stay on one thread.
-- `<OD>` finds people and faces (overlapping boxes merged); `<OCR_WITH_REGION>` reads text lines. A line is PII when it contains a value that passes a validator, or carries a PII label (Aadhaar, PAN, card, phone, email, UPI, IFSC, OTP) next to a value-looking token, which catches values OCR garbled. Inside unscannable media every OCR line is masked. OCR output is limited to 512 tokens; when a crop needs more, the lines after the cut are never reported, so every media area of that crop is blacked out.
+- On WASM, ONNX Runtime uses up to 4 threads, which needs a cross-origin isolated page: the manifest sets COEP `require-corp` and COOP `same-origin` (so extension pages may load only cross-origin resources that allow it; today they load none). Firefox ignores these keys and stays on one thread.
+- `<OD>` finds faces (overlapping boxes merged); `<OCR_WITH_REGION>` reads lines. A line is PII if a value in it passes a validator or a PII label sits next to a value-looking token (catches garbled OCR). Inside frames and embeds every line is masked; if OCR hits its 512-token limit, the whole media area is blacked out.
 
 ### 2.3 Pass 3: canvas masks (`extension/offscreen.js`)
 
@@ -80,7 +78,7 @@ Every action from the server is checked on the device against a description of i
 "Run Agent" pins a task to the active tab and repeats: sanitize → POST `/api` → gate + vault → `chrome.scripting.executeScript` → wait for the page to settle.
 
 - **Pauses** (vault kept, Resume continues): switching to another tab, the tab leaving the start site, the vision model still loading (resumes by itself when ready), a server or LLM error, 3 steps in a row without progress, 15 steps without finishing.
-- **Asks** (`ask_user`, for a detail only the user can give): the side panel shows the model's question with an answer box and waits; nothing touches the page meanwhile. The answer goes through the vault like the task, so PII in it reaches the server only as placeholders, which become real values only in a matching field; it enters the history as `The user answered: …`. The raw answer is not kept in the panel. Switching tabs does not interrupt the question; the tab is checked again before the next step. Stop or Clear ends the task.
+- **Asks** (`ask_user`): the panel shows the question with an answer box; nothing touches the page meanwhile. The answer is masked like the task and enters the history as `The user answered: …`; the raw answer is not kept. Stop or Clear ends the task.
 - **Ends** (vault cleared): the model answers `done`, Stop, Clear, a new task, or the task's tab is closed. On `done` the side panel announces the model's `summary` ("Task complete: …") until the next task or Clear.
 
 ### 2.7 Fail-closed rules
@@ -121,7 +119,7 @@ Methods: `black_box`, `solid_mask`, `semantic_mock`. Sources: `dom_text`, `dom_f
 
 ## 4. Server
 
-A Flask app (`server/app.py`) that validates the request (JSON object, masked task, data-URL image, history list, manifest schema), forwards it to an OpenAI-compatible endpoint serving Gemma 4 (default: Ollama `gemma4:31b-it-q4_K_M`; vLLM: `google/gemma-4-31B-it`), and validates the reply into exactly one action: `{"action": "click|type|scroll|wait|done", "ref", "target", "coordinates", "value", "thought"}`. The system prompt tells the model what each mask means and never to guess masked content. Endpoints, status codes and configuration are in [`API.md`](API.md).
+A Flask app (`server/app.py`) that validates the request (JSON object, masked task, data-URL image, history list, manifest schema), forwards it to an OpenAI-compatible endpoint serving Gemma 4 (default: Ollama `gemma4:31b-it-q4_K_M`; vLLM: `google/gemma-4-31B-it`), and validates the reply into exactly one action: `{"action": "click|type|scroll|wait|ask_user|done", "ref", "target", "coordinates", "value", "question", "summary", "thought"}`. The system prompt tells the model what each mask means and never to guess masked content. Endpoints, status codes and configuration are in [`API.md`](API.md).
 
 ---
 

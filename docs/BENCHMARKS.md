@@ -1,10 +1,21 @@
 # Privag AI — Benchmarks
 
-Every figure on this page comes from `bench/bench.mjs` (and, in section 5, `bench/eval.mjs`); the raw output of each run is committed in [`bench/results/`](../bench/results/). Anything this script does not measure is listed at the end as **not yet measured**.
+## Summary
+
+| Measure | Result | Section |
+| --- | --- | --- |
+| Full step with Gemma 4 31B | **9.47 s** median (model 6.91 s, vision 2.04 s) | 5 |
+| Step without vision work (mock model) | 453 ms (no media), 433 ms (unchanged media) | 1 |
+| Vision pass on new images, WebGPU (GTX 1650) | 2.04–3.90 s median per run | 1, 3, 5 |
+| Vision pass, CPU only | 29.0 s and 48.1 s on 4 WASM threads (93.5 s and 103.1 s on one) | 2 |
+| Model download (once) | 343.0 MiB (+227.8 MiB for the CPU fallback) | 4 |
+| Peak memory, vision on every step | extension 0.78–1.09 GiB, GPU process 1.49–1.57 GiB, page tab 25.6–46.5 MiB | 3, 5 |
+
+Every figure comes from `bench/bench.mjs` (section 5 also `bench/eval.mjs`); raw output in [`bench/results/`](../bench/results/). What is not measured is listed at the end.
 
 ## How it is measured
 
-`node bench/bench.mjs` (after `cd tests && npm install`) starts the real Flask server, a local **mock** OpenAI-compatible model (canned replies; Gemma 4 is not involved), and a headless Chromium-based browser with the unpacked extension. It opens `bench/fixture/index.html` (synthetic PII and a photo), starts a task that clicks "Next" on every step, and records the times the side panel measures itself for every step (`window.__privagSteps`):
+`node bench/bench.mjs` starts the real Flask server, a **mock** model (canned replies) unless `LLM_URL` names a real one, and headless Brave with the extension. On `bench/fixture/index.html` (synthetic PII and a photo) the agent clicks "Next" every step; the side panel records each stage (`window.__privagSteps`):
 
 | Stage | What it covers |
 | --- | --- |
@@ -17,26 +28,21 @@ Every figure on this page comes from `bench/bench.mjs` (and, in section 5, `benc
 | vlm | the time the server waited for the model (here: the mock) |
 | execute | the local gate plus the action in the page |
 
-`PHOTO` picks what the fixture page shows:
-- `moving` (default): each "Next" click moves the photo by one pixel, so the frame changes and the vision pass really runs on every step.
-- `still`: the photo stays put, so vision runs once and later steps reuse the cached result.
-- `none`: no photo, so no media is on screen and vision is skipped.
-
-"Step" below is the sum of the stages, with the server round trip in place of network + vlm (`stepSumMs` in the raw output, grouped by what the vision pass did). It leaves out the 800 ms the loop waits after each action for the page to settle, and it uses a mock model, so it is **not** the time of a step with Gemma 4. Times are in milliseconds: median (p90) over the steps of a run, as `bench.mjs` computes them (for an even number of steps the median is the upper of the two middle values). A run of N steps has N + 1 sanitized frames, because the step that answers `done` is sanitized too.
-
-Memory: private bytes of every browser process, sampled about once a second during the agent run and grouped by process type; the tables show each group's peak. "Model download" is the size of the files the extension stored in its Cache Storage after loading the model.
+- `PHOTO`: `moving` (default; the photo moves each step, so vision runs every step), `still` (vision once, then cached) or `none` (no media, vision skipped).
+- **Step** = the sum of the stages, with the server round trip for network + vlm; it leaves out the 800 ms wait after each action. Times in ms: median (p90) over a run's steps.
+- **Memory** = peak private bytes per process group, sampled every second. **Model download** = what the extension stored in Cache Storage.
 
 ## Test machine
 
 Laptop: Intel Core i5-10300H (4 cores, 8 threads), 7.9 GiB RAM, NVIDIA GeForce GTX 1650 4 GB (driver 617.14, WebGPU adapter "nvidia / turing"), Windows 11 (build 26200), Brave 1.96 (Chromium 154.0.8037.93), headless. Florence-2: `onnx-community/Florence-2-base-ft`.
 
-All runs are from 2026-10-02. The runs in section 4 were made first. Sections 1–3 were made hours later, while the laptop was in normal use (Brave and other apps running; one sample showed 65% CPU load). The later runs are slower across the board, the old manifest included: section 3's runs without isolation had vision medians of 2876–3094 ms, against 2728 and 2825 ms in section 4. Compare runs within a section, not across sections.
+Sections 1–4 are from 2026-10-02, section 5 from 2026-10-05. Section 4 ran first; sections 1–3 ran hours later while the laptop was in normal use (65% CPU load in one sample), and are slower across the board (old-manifest vision 2876–3094 ms there, 2728 and 2825 ms in section 4). Compare runs within a section.
 
 ## Results
 
 ### 1. Conditional vision
 
-What a step costs depending on what the vision pass had to do. Cross-origin isolated build (the current code); the WebGPU model was loaded in every run, but only the `moving` runs make it work on every step.
+What a step costs depending on what vision had to do (current code, mock model).
 
 | Page (`PHOTO`) | Device | What vision did | Step: median (p90), steps |
 | --- | --- | --- | --- |
@@ -45,11 +51,11 @@ What a step costs depending on what the vision pass had to do. Cross-origin isol
 | `moving` | WebGPU | ran on every step | **3395–4348**, medians of 5 runs of 11 steps |
 | `moving` | WASM, 4 threads | ran on every step | **29356** and **48634**, medians of 2 runs of 4 steps |
 
-Most of a skipped or cached step is the settle stage (290–308 ms median), the wait for a still DOM. Step 1 of the `still` run was the first inference after the model loaded, so it includes one-off warm-up.
+Most of a skipped or cached step is the settle stage (290–308 ms). Step 1 of the `still` run includes the model's one-off warm-up.
 
 ### 2. CPU only: one WASM thread versus four
 
-ONNX Runtime uses WASM threads only when the page is cross-origin isolated. Since commit `4bedb99` the manifest sets `cross_origin_embedder_policy: require-corp` and `cross_origin_opener_policy: same-origin`. A probe in headless Brave showed `crossOriginIsolated` false with the old manifest (one worker) and true with the new one: ONNX Runtime then started 3 thread workers next to the Florence worker, 4 threads in all (`min(4, ceil(logical cores / 2))` on this 8-thread CPU). All four runs below used `BROWSER_ARGS=--disable-gpu`, which forces the WASM fallback; listed in the order they ran.
+ONNX Runtime uses WASM threads only in a cross-origin isolated page; since `4bedb99` the manifest sets COEP `require-corp` and COOP `same-origin`. A probe confirmed the switch: one worker before, four threads after (`min(4, ceil(cores / 2))`). Runs forced onto WASM with `--disable-gpu`, in the order they ran:
 
 | Run | Threads | vision | Step | Peak memory, extension processes | Model load from cache |
 | --- | --- | --- | --- | --- | --- |
@@ -58,11 +64,11 @@ ONNX Runtime uses WASM threads only when the page is cross-origin isolated. Sinc
 | `wasm-1thread-control` (old manifest) | 1 | 103128 (105377) | 103565 | 1383.1 MiB | 30.6 s |
 | `wasm-4threads-b` | 4 | **48107** (48306) | 48634 | 1302.3 MiB | 45.7 s |
 
-Four threads were faster in both comparisons. How much faster depends on how much else the CPU is doing: the two 4-thread runs differ by 19 s.
+Four threads were faster in both comparisons; by how much depends on other CPU load (the two 4-thread runs differ by 19 s).
 
 ### 3. WebGPU with and without cross-origin isolation
 
-The isolation could also affect the WebGPU path, so the same benchmark (`PHOTO=moving`, 10 steps) was run alternately with the current manifest and with the previous one. Listed in the order they ran:
+Alternating runs with the current and the previous manifest (`PHOTO=moving`, 10 steps), in the order they ran:
 
 | Run | Isolated | vision | Step | Peak memory, extension / GPU process |
 | --- | --- | --- | --- | --- |
@@ -76,7 +82,7 @@ The isolation could also affect the WebGPU path, so the same benchmark (`PHOTO=m
 | `webgpu-not-isolated-d` | no | 2876 (3139) | 3326 | 758.8 / 1562.0 MiB |
 | `webgpu-isolated-d` | yes | 3009 (3276) | 3467 | 1011.6 / 1568.0 MiB |
 
-In the four alternating pairs (a–d) the isolated build's vision median was slower in three (by 838, 275 and 133 ms) and faster in one (by 73 ms). No gain on WebGPU, then, and possibly a small cost, within the run-to-run noise of this machine. Memory shows no consistent difference.
+Isolated was slower in three pairs (by 838, 275 and 133 ms) and faster in one (by 73 ms): no gain on WebGPU, possibly a small cost within the noise. Memory shows no consistent difference.
 
 ### 4. Earlier runs (before the threading change)
 
@@ -106,7 +112,7 @@ Model files in the extension's cache: **343.0 MiB** for the WebGPU set (`vision_
 
 ### 5. With Gemma 4 31B
 
-2026-10-05, current code (the extension is cross-origin isolated). The model is Ollama's `gemma4:31b` on a server on the local network; its hardware and load were not recorded. The client is the same laptop, now with Brave on Chromium 154.0.8037.98. `PHOTO=moving`, so vision ran on every step; the model clicked "Next" on every step until the loop's 15-step limit paused the task.
+2026-10-05, current code. Model: Ollama `gemma4:31b` on a server on the local network (hardware not recorded). Client: the same laptop, Brave on Chromium 154.0.8037.98. Vision ran every step; the model clicked "Next" until the 15-step limit paused the task.
 
 | Stage | Gemma 4 31B (15 steps) |
 | --- | --- |
@@ -122,7 +128,7 @@ Model files in the extension's cache: **343.0 MiB** for the WebGPU set (`vision_
 
 Model load from the browser cache 20.8 s. Peak memory: the page's tab 25.6 MiB, extension processes 1087.2 MiB, GPU process 1494.6 MiB, all browser processes 2584.2 MiB.
 
-The task evaluation (`bench/eval.mjs`, same day, same model) measured the model's reply over 39 steps of six different tasks: median 9491 ms, p90 22336 ms, min 5581 ms, max 28723 ms. Its task results are in [`EVALUATION.md`](EVALUATION.md).
+In the task evaluation (same day, same model, 39 steps of six tasks) the model's reply took 9491 ms median (p90 22336, range 5581–28723). Task results: [`EVALUATION.md`](EVALUATION.md).
 
 ## Raw output
 
@@ -145,9 +151,7 @@ Each file holds every step's timings, every memory sample (per process) and the 
 
 ## Not yet measured
 
-- **Gemma 4 through vLLM**, and the model server's own hardware and load (section 5 used Ollama on a server whose hardware was not recorded).
-- **PII detection recall and precision** on a labelled data set (for example WebPII).
-- **Re-OCR check** of our own masked frames ("no PII readable after masking").
-- First-run model **download time** (depends on the network).
-- How often real pages need the vision pass at all (the conditional-vision figures above are from one fixture page).
-- Google Chrome, Microsoft Edge, other GPUs and operating systems; **Firefox** timings (our Firefox check was a functional test, not a benchmark, and ran before the threading change; Firefox does not support the manifest keys behind it).
+- PII recall and precision on a labelled set (e.g. WebPII); a re-OCR check of masked frames.
+- Gemma 4 through vLLM; the model server's hardware.
+- How often real pages need vision at all (section 1 uses one fixture page); first-run download time.
+- Chrome, Edge, other GPUs and operating systems; Firefox timings (our Firefox check was functional only).
