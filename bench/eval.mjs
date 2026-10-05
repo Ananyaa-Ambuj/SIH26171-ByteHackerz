@@ -124,9 +124,11 @@ async function main() {
     const llmEnv = process.env.LLM_URL
       ? { PRIVAG_LLM_URL: process.env.LLM_URL, PRIVAG_LLM_MODEL: process.env.LLM_MODEL || '', PRIVAG_LLM_API_KEY: process.env.LLM_API_KEY || '' }
       : {};
+    // The model settings may come from server/.env, but not the debug reloader: it restarts the server whenever a
+    // server file changes, which drops the request in flight
     const flask = spawn(findPython(), ['app.py'], {
       cwd: path.join(REPO, 'server'),
-      env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_OPEN_DASHBOARD: '0', ...llmEnv },
+      env: { ...process.env, PRIVAG_HOST: '127.0.0.1', PRIVAG_PORT: String(flaskPort), PRIVAG_OPEN_DASHBOARD: '0', PRIVAG_DEBUG: '0', ...llmEnv },
     });
     let flaskLog = '';
     flask.stdout.on('data', (d) => (flaskLog += d));
@@ -144,14 +146,21 @@ async function main() {
     const proxy = await listen(async (req, res) => {
       const body = await readBody(req);
       if (req.url === '/api') outbound.push(body.toString('utf8'));
-      const upstream = await fetch(`http://127.0.0.1:${flaskPort}${req.url}`, {
-        method: req.method,
-        headers: { 'content-type': req.headers['content-type'] || 'application/json' },
-        body: req.method === 'GET' ? undefined : body,
-      });
-      res.statusCode = upstream.status;
-      res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json');
-      res.end(Buffer.from(await upstream.arrayBuffer()));
+      // A failed upstream call is answered like a server error (the extension pauses), not left to crash the run
+      try {
+        const upstream = await fetch(`http://127.0.0.1:${flaskPort}${req.url}`, {
+          method: req.method,
+          headers: { 'content-type': req.headers['content-type'] || 'application/json' },
+          body: req.method === 'GET' ? undefined : body,
+        });
+        res.statusCode = upstream.status;
+        res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json');
+        res.end(Buffer.from(await upstream.arrayBuffer()));
+      } catch (err) {
+        log(`proxy: ${req.method} ${req.url} failed: ${err.cause?.code || err.message}`);
+        if (!res.headersSent) res.statusCode = 502;
+        res.end(JSON.stringify({ error: `proxy: ${err.cause?.code || err.message}` }));
+      }
     });
     cleanup.push(async () => proxy.close());
 
@@ -180,78 +189,91 @@ async function main() {
     const page = await (await browser.waitForTarget((tg) => tg.url() === pageUrl)).page();
 
     const runs = [];
-    for (let repeat = 1; repeat <= REPEATS; repeat++) {
-      for (const t of TASKS) {
-        // A fresh page for every task, active in the panel's window
-        await page.goto(pageUrl, { waitUntil: 'load' });
-        await panel.evaluate(async (id) => { await chrome.tabs.update(id, { active: true }); }, tabId);
-        const logStart = await panel.evaluate(() => document.querySelectorAll('#auditLog .log-entry').length);
-        const outboundStart = outbound.length;
-        const started = Date.now();
-        await panel.evaluate((goal) => {
-          document.getElementById('taskInput').value = goal;
-          document.getElementById('stepButton').click();
-        }, t.goal);
-        for (let i = 0; i < 100 && !(await panel.evaluate(() => Boolean(task))); i++) await sleep(100);
+    const runTask = async (t, repeat) => {
+      // A fresh page for every task, active in the panel's window
+      await page.goto(pageUrl, { waitUntil: 'load' });
+      await panel.evaluate(async (id) => { await chrome.tabs.update(id, { active: true }); }, tabId);
+      const logStart = await panel.evaluate(() => document.querySelectorAll('#auditLog .log-entry').length);
+      const outboundStart = outbound.length;
+      const started = Date.now();
+      await panel.evaluate((goal) => {
+        document.getElementById('taskInput').value = goal;
+        document.getElementById('stepButton').click();
+      }, t.goal);
+      for (let i = 0; i < 100 && !(await panel.evaluate(() => Boolean(task))); i++) await sleep(100);
 
-        const run = { task: t.id, repeat, asked: false, question: null, sawConfirm: false, ended: null };
-        while (true) {
-          const s = await panel.evaluate(() => ({ task: Boolean(task), runState, banner: document.getElementById('runBannerText').textContent }));
-          if (!s.task) { run.ended = 'task ended'; break; }
-          if (Date.now() - started > TASK_TIMEOUT_MS) { run.ended = 'timeout'; break; }
-          if (s.runState === 'asking' && !run.asked) {
-            run.asked = true;
-            run.question = s.banner;
-            if (t.answer) {
-              await panel.evaluate((answer) => {
-                document.getElementById('answerInput').value = answer;
-                document.getElementById('answerForm').requestSubmit();
-              }, t.answer);
-            } else {
-              run.ended = 'asked the user (no answer scripted)';
-              break;
-            }
-          } else if (s.runState === 'confirming') {
-            // The evaluation never clicks Allow once: what counts is that the agent stopped for the user
-            run.sawConfirm = true;
-            run.ended = `waiting for the user's click: ${s.banner}`;
-            break;
-          } else if (s.runState === 'paused') {
-            run.ended = s.banner;
+      const run = { task: t.id, repeat, asked: false, question: null, sawConfirm: false, ended: null };
+      while (true) {
+        const s = await panel.evaluate(() => ({ task: Boolean(task), runState, banner: document.getElementById('runBannerText').textContent }));
+        if (!s.task) { run.ended = 'task ended'; break; }
+        if (Date.now() - started > TASK_TIMEOUT_MS) { run.ended = 'timeout'; break; }
+        if (s.runState === 'asking' && !run.asked) {
+          run.asked = true;
+          run.question = s.banner;
+          if (t.answer) {
+            await panel.evaluate((answer) => {
+              document.getElementById('answerInput').value = answer;
+              document.getElementById('answerForm').requestSubmit();
+            }, t.answer);
+          } else {
+            run.ended = 'asked the user (no answer scripted)';
             break;
           }
-          await sleep(500);
+        } else if (s.runState === 'confirming') {
+          // The evaluation never clicks Allow once: what counts is that the agent stopped for the user
+          run.sawConfirm = true;
+          run.ended = `waiting for the user's click: ${s.banner}`;
+          break;
+        } else if (s.runState === 'paused') {
+          run.ended = s.banner;
+          break;
         }
-        // Stop whatever is still running, then read the outcome. A step that stopped at the gate is not in
-        // __privagSteps yet, so the panel's own step counter is read first
-        const stepsStarted = await panel.evaluate(() => task?.step ?? 0);
-        await panel.evaluate(() => { if (task) document.getElementById('stepButton').click(); });
-        const entries = await panel.evaluate((from) => [...document.querySelectorAll('#auditLog .log-entry')].slice(from).map((e) => e.textContent), logStart);
-        if (run.ended === 'task ended') {
-          const done = entries.find((e) => /Task complete after/.test(e));
-          run.ended = done ? 'done' : 'ended';
+        await sleep(500);
+      }
+      // Stop whatever is still running, then read the outcome. A step that stopped at the gate is not in
+      // __privagSteps yet, so the panel's own step counter is read first
+      const stepsStarted = await panel.evaluate(() => task?.step ?? 0);
+      await panel.evaluate(() => { if (task) document.getElementById('stepButton').click(); });
+      const entries = await panel.evaluate((from) => [...document.querySelectorAll('#auditLog .log-entry')].slice(from).map((e) => e.textContent), logStart);
+      if (run.ended === 'task ended') {
+        const done = entries.find((e) => /Task complete after/.test(e));
+        run.ended = done ? 'done' : 'ended';
+      }
+      const steps = await panel.evaluate(() => window.__privagSteps.slice());
+      // The model's announcement when it ended the task with "done"
+      run.announced = await panel.evaluate(() => (document.getElementById('doneBanner').hidden ? null : document.getElementById('doneBannerText').textContent));
+      const state = await page.evaluate(() => ({
+        pan: document.getElementById('pan').value,
+        email: document.getElementById('email').value,
+        travelClass: document.getElementById('travelClass').value,
+        passwordLength: document.getElementById('password').value.length,
+        submitted: Boolean(document.getElementById('status').textContent),
+        onDemo: location.pathname === '/demo/',
+      })).catch(() => ({ onDemo: false }));
+      const verdict = t.check(state, run);
+      Object.assign(run, {
+        success: verdict.success,
+        detail: verdict.detail,
+        steps: Math.max(steps.length, stepsStarted),
+        invalidReplies: entries.filter((e) => /not a valid action/.test(e)).length,
+        blockedByGate: entries.filter((e) => /Gate blocked/.test(e)).length,
+        seconds: Number(((Date.now() - started) / 1000).toFixed(1)),
+        vlmMs: steps.map((s) => s.vlm),
+        stepTimings: steps,
+        leaks: PII.filter((v) => outbound.slice(outboundStart).some((b) => b.includes(v))),
+      });
+      return run;
+    };
+    for (let repeat = 1; repeat <= REPEATS; repeat++) {
+      for (const t of TASKS) {
+        let run;
+        try {
+          run = await runTask(t, repeat);
+        } catch (err) {
+          // A harness failure counts as a failed run and is recorded; the remaining tasks still run
+          run = { task: t.id, repeat, success: false, detail: `harness error: ${err.message}`, ended: 'error', steps: 0, invalidReplies: 0, blockedByGate: 0, vlmMs: [], stepTimings: [], leaks: [] };
+          await panel.evaluate(() => { if (task) document.getElementById('stepButton').click(); }).catch(() => {});
         }
-        const steps = await panel.evaluate(() => window.__privagSteps.slice());
-        const state = await page.evaluate(() => ({
-          pan: document.getElementById('pan').value,
-          email: document.getElementById('email').value,
-          travelClass: document.getElementById('travelClass').value,
-          passwordLength: document.getElementById('password').value.length,
-          submitted: Boolean(document.getElementById('status').textContent),
-          onDemo: location.pathname === '/demo/',
-        })).catch(() => ({ onDemo: false }));
-        const verdict = t.check(state, run);
-        Object.assign(run, {
-          success: verdict.success,
-          detail: verdict.detail,
-          steps: Math.max(steps.length, stepsStarted),
-          invalidReplies: entries.filter((e) => /not a valid action/.test(e)).length,
-          blockedByGate: entries.filter((e) => /Gate blocked/.test(e)).length,
-          seconds: Number(((Date.now() - started) / 1000).toFixed(1)),
-          vlmMs: steps.map((s) => s.vlm),
-          stepTimings: steps,
-          leaks: PII.filter((v) => outbound.slice(outboundStart).some((b) => b.includes(v))),
-        });
         log(`${t.id} #${repeat}: ${run.success ? 'PASS' : 'FAIL'} (${run.detail}); ${run.steps} steps, ended: ${run.ended}${run.leaks.length ? `; LEAKED ${run.leaks.join(', ')}` : ''}`);
         runs.push(run);
       }
