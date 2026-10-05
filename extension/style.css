@@ -484,6 +484,12 @@ body {
   background: rgba(239, 68, 68, 0.1);
 }
 
+/* The task ended with "done": the model's summary */
+.run-banner-done {
+  border-color: var(--accent-success);
+  background: rgba(16, 185, 129, 0.1);
+}
+
 /* The agent's question: text on its own line, the answer box below it */
 .run-banner-ask {
   flex-wrap: wrap;

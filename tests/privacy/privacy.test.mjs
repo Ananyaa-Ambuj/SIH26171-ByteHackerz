@@ -111,7 +111,7 @@ test('no raw PII leaves the device during an agent task, answers to the agent in
       2: { thought: 'The PAN field is empty and the task does not say which PAN goes there', action: 'ask_user', question: QUESTION },
       3: answered && refOf('PAN') && { thought: 'Enter the PAN the user gave', action: 'type', ref: refOf('PAN'), target: 'PAN', value: answered },
     };
-    const action = replies[llmBodies.length] || { thought: 'Nothing left to do', action: 'done' };
+    const action = replies[llmBodies.length] || { thought: 'Nothing left to do', action: 'done', summary: 'Entered the PAN you gave into the PAN field.' };
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: JSON.stringify(action) } }] }));
   });
@@ -266,6 +266,9 @@ test('no raw PII leaves the device during an agent task, answers to the agent in
   const fixturePage = (await browser.pages()).find((p) => p.url() === pageUrl);
   assert.equal(await fixturePage.$eval('#pan', (el) => el.value), ANSWER_PAN, 'the PAN field should hold the real PAN from the answer');
   assert.equal(await panel.evaluate(() => document.getElementById('answerInput').value), '', 'the raw answer should not stay in the side panel');
+  // "done" announces the end of the task with the model's summary, and the announcement stays visible
+  const announced = await panel.evaluate(() => ({ hidden: document.getElementById('doneBanner').hidden, text: document.getElementById('doneBannerText').textContent }));
+  assert.deepEqual(announced, { hidden: false, text: 'Task complete: Entered the PAN you gave into the PAN field.' });
 
   fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify({
     outboundRequests: steps.length,

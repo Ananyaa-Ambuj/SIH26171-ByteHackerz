@@ -428,16 +428,27 @@ class ModelReplyTests(ServerTestCase):
             self.assertIn('question', data['invalid_reason'])
         self.assertEqual(len(self.action_for('{"action": "ask_user", "question": "%s"}' % ('q' * 900))['action']['question']), 500)
 
+    def test_done_announces_a_summary(self):
+        """The side panel announces the end of a task with the model's summary; a "done" without one must still end
+        the task (it is not invalid), and the summary is kept only on "done"."""
+        data = self.action_for('{"action": "done", "summary": " Entered the PAN in the PAN field. "}')
+        self.assertEqual(data['action'], {'action': 'done', 'summary': 'Entered the PAN in the PAN field.'})
+        self.assertEqual(self.action_for('{"action": "done"}')['action'], {'action': 'done'})
+        self.assertNotIn('invalid_reason', self.action_for('{"action": "done", "summary": 7}'))
+        self.assertNotIn('summary', self.action_for('{"action": "scroll", "summary": "x"}')['action'])
+        self.assertEqual(len(self.action_for('{"action": "done", "summary": "%s"}' % ('s' * 900))['action']['summary']), 500)
+
     def test_default_prompt_describes_every_action(self):
         """The model can only use an action it is told about: every action the server accepts must be in the
         default system prompt's JSON template."""
         for verb in llm.ACTIONS:
             self.assertIn(f'\\"{verb}\\"', json.dumps(llm.DEFAULTS['system_prompt']), verb)
         self.assertIn('"question"', llm.DEFAULTS['system_prompt'])
+        self.assertIn('"summary"', llm.DEFAULTS['system_prompt'])
 
     def test_smuggled_keys_are_dropped(self):
         """The model must not be able to set flags such as "confirmed" that the extension's action gate might
-        trust; only the seven documented keys survive."""
+        trust; only the eight documented keys survive."""
         data = self.action_for('{"action": "click", "ref": "e2", "confirmed": true, "url": "https://evil.example",'
                                ' "thought": "pay now"}')
         self.assertEqual(set(data['action']), {'action', 'ref', 'thought'})

@@ -197,7 +197,7 @@ def extract_json(text):
 
 ACTIONS = ('click', 'type', 'scroll', 'wait', 'ask_user', 'done')
 INVALID_ACTION = {"action": "wait", "target": "Model reply was not a valid action"}
-_MAX_CHARS = {'thought': 1000, 'target': 200, 'value': 1000, 'question': 500}
+_MAX_CHARS = {'thought': 1000, 'target': 200, 'value': 1000, 'question': 500, 'summary': 500}
 _REF = re.compile(r'\W*[eE]?([0-9]{1,6})\W*')
 _REF_IN_TARGET = re.compile(r'\W*[eE][0-9]{1,6}\W*')
 
@@ -212,7 +212,7 @@ def _is_coordinate(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0
 
 def normalize_action(reply):
-    """(action, None) when the reply is one usable action, else (None, why). Only the seven documented keys
+    """(action, None) when the reply is one usable action, else (None, why). Only the eight documented keys
     survive, so the model cannot smuggle other fields (such as "confirmed") into what the extension runs."""
     if not isinstance(reply, dict):
         return None, "the reply has no JSON object"
@@ -254,6 +254,10 @@ def normalize_action(reply):
         if not (isinstance(question, str) and question.strip()):
             return None, 'ask_user needs a "question"'
         action["question"] = question.strip()[:_MAX_CHARS["question"]]
+    # The announcement shown to the user when the task ends; optional, so a bare "done" still ends the task
+    summary = reply.get("summary")
+    if verb == "done" and isinstance(summary, str) and summary.strip():
+        action["summary"] = summary.strip()[:_MAX_CHARS["summary"]]
 
     if verb in ("click", "type") and "ref" not in action and "coordinates" not in action:
         return None, f"{verb} needs a ref or [x, y] coordinates"

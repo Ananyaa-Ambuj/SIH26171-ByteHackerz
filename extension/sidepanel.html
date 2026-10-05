@@ -97,6 +97,11 @@ python -m venv .venv
           <button type="submit" class="btn btn-primary btn-sm">Answer</button>
         </form>
       </div>
+
+      <!-- The model's announcement when it ends a task with "done"; stays until the next task or Clear -->
+      <div id="doneBanner" class="run-banner run-banner-done" role="status" hidden>
+        <span id="doneBannerText" class="run-banner-text"></span>
+      </div>
     </section>
 
     <!-- Visual Perception Canvas Preview -->

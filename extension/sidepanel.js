@@ -31,6 +31,8 @@ const resumeButton = document.getElementById('resumeButton');
 const allowButton = document.getElementById('allowButton');
 const answerForm = document.getElementById('answerForm');
 const answerInput = document.getElementById('answerInput');
+const doneBanner = document.getElementById('doneBanner');
+const doneBannerText = document.getElementById('doneBannerText');
 
 const canvas = document.getElementById('screenshotCanvas');
 const ctx = canvas.getContext('2d');
@@ -442,7 +444,7 @@ function showDecision(action) {
   actionTargetEl.textContent = [action.ref, action.target].filter(Boolean).join(' · ') || 'None';
   actionCoordsEl.textContent = action.ref ? `ref ${action.ref}`
     : Array.isArray(action.coordinates) ? `[${action.coordinates.join(', ')}]` : 'N/A';
-  actionValueEl.textContent = action.value || action.question || 'None';
+  actionValueEl.textContent = action.value || action.question || action.summary || 'None';
 }
 
 // Only these fields of the server's action are used, so a reply cannot smuggle in flags (e.g. a fake
@@ -450,7 +452,7 @@ function showDecision(action) {
 function pickAction(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const action = { action: String(raw.action || '').toLowerCase() };
-  for (const key of ['thought', 'target', 'value', 'ref', 'question']) {
+  for (const key of ['thought', 'target', 'value', 'ref', 'question', 'summary']) {
     if (typeof raw[key] === 'string') action[key] = raw[key];
   }
   if (typeof raw.ref === 'number') action.ref = `e${raw.ref}`;
@@ -525,6 +527,14 @@ function endTask(message, type = 'info') {
   masker.clear();
   log(`${message} Task ended; the vault was cleared.`, type);
   setAgentUi();
+}
+
+// The model said "done": the task ends, and its summary is announced in the panel until the next task or Clear
+function finishTask(summary) {
+  const steps = task.step;
+  doneBannerText.textContent = summary ? `Task complete: ${summary}` : `Task complete after ${steps} step(s).`;
+  doneBanner.hidden = false;
+  endTask(`Task complete after ${steps} step(s)${summary ? `: ${summary}` : '.'}`, 'success');
 }
 
 // Pauses until the user clicks Allow once (or Stop); the page is not touched before that
@@ -664,7 +674,7 @@ async function runAgentStep(current) {
   showDecision(action);
   if (action.action === 'done') {
     stepTimings.push(timing);
-    return { done: true };
+    return { done: true, summary: action.summary };
   }
   if (action.action === 'ask_user') {
     stepTimings.push(timing);
@@ -714,7 +724,7 @@ async function runLoop() {
 
       const outcome = await runAgentStep(current);
       if (!current() || outcome.paused || outcome.stale) return;
-      if (outcome.done) return endTask(`Task complete after ${task.step} step(s).`, 'success');
+      if (outcome.done) return finishTask(outcome.summary);
 
       // Waiting, failing or being blocked makes no progress; several in a row means the agent is stuck
       task.stalled = outcome.progress ? 0 : task.stalled + 1;
@@ -758,6 +768,7 @@ async function startTask() {
   masker.clear();
   actionHistory = [];
   stepTimings.length = 0;
+  doneBanner.hidden = true;
   task = { goal, tabId: tab.id, windowId: tab.windowId, startUrl: tab.url, step: 0, stepsLeft: MAX_AGENT_STEPS, stalled: 0 };
   log(`Task started on ${PrivagGate.hostOf(tab.url) || 'this tab'}.`, 'info');
   runLoop();
@@ -867,6 +878,7 @@ sanitizeButton.addEventListener('click', async () => {
 
 clearButton.addEventListener('click', () => {
   if (task) endTask('Cleared by you.', 'info');
+  doneBanner.hidden = true;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   canvas.style.display = 'none';
   canvasPlaceholder.style.display = 'flex';
