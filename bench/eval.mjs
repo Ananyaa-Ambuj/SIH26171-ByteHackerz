@@ -207,7 +207,13 @@ async function main() {
         const s = await panel.evaluate(() => ({ task: Boolean(task), runState, banner: document.getElementById('runBannerText').textContent }));
         if (!s.task) { run.ended = 'task ended'; break; }
         if (Date.now() - started > TASK_TIMEOUT_MS) { run.ended = 'timeout'; break; }
-        if (s.runState === 'asking' && !run.asked) {
+        if (s.runState === 'asking' && run.asked) {
+          // Only the first question has a scripted answer: a second one ends the run (and is recorded)
+          run.secondQuestion = s.banner;
+          run.ended = 'asked the user a second question (no answer scripted)';
+          break;
+        }
+        if (s.runState === 'asking') {
           run.asked = true;
           run.question = s.banner;
           if (t.answer) {
