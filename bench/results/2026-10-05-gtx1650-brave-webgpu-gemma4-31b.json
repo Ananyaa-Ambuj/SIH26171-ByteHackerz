@@ -1,0 +1,6525 @@
+{
+  "date": "2026-10-05T15:01:36.785Z",
+  "hardware": {
+    "platform": "Windows_NT 10.0.26200",
+    "cpu": "Intel(R) Core(TM) i5-10300H CPU @ 2.50GHz",
+    "cpuThreads": 8,
+    "ramGiB": 7.9,
+    "nvidiaGpu": "NVIDIA GeForce GTX 1650, 4096 MiB, 617.14",
+    "webgpuAdapter": {
+      "vendor": "nvidia",
+      "architecture": "turing",
+      "description": ""
+    }
+  },
+  "browser": "Chrome/154.0.8037.98",
+  "browserArgs": [],
+  "visionDevice": "webgpu",
+  "vlm": {
+    "url": "real endpoint (LLM_URL)",
+    "model": "gemma4:31b"
+  },
+  "requestedSteps": 10,
+  "photo": "moving",
+  "finalState": {
+    "task": true,
+    "runState": "paused",
+    "banner": "Paused: 15 steps without finishing; Resume allows 15 more"
+  },
+  "runMs": 155333,
+  "modelLoadMs": 20774,
+  "stagesMs": {
+    "settle": {
+      "n": 15,
+      "min": 290,
+      "median": 309,
+      "p90": 317,
+      "max": 319
+    },
+    "dom": {
+      "n": 15,
+      "min": 2,
+      "median": 4,
+      "p90": 6,
+      "max": 6
+    },
+    "capture": {
+      "n": 15,
+      "min": 35,
+      "median": 39,
+      "p90": 51,
+      "max": 60
+    },
+    "vision": {
+      "n": 15,
+      "min": 1990,
+      "median": 2044,
+      "p90": 2082,
+      "max": 2543
+    },
+    "mask": {
+      "n": 15,
+      "min": 15,
+      "median": 17,
+      "p90": 20,
+      "max": 312
+    },
+    "network": {
+      "n": 15,
+      "min": 7,
+      "median": 9,
+      "p90": 12,
+      "max": 275
+    },
+    "vlm": {
+      "n": 15,
+      "min": 6054,
+      "median": 6908,
+      "p90": 7689,
+      "max": 8835
+    },
+    "execute": {
+      "n": 15,
+      "min": 1,
+      "median": 2,
+      "p90": 5,
+      "max": 487
+    },
+    "server": {
+      "n": 15,
+      "min": 6061,
+      "median": 6917,
+      "p90": 7699,
+      "max": 8845
+    }
+  },
+  "visionModes": [
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran",
+    "ran"
+  ],
+  "stepSumMs": {
+    "ran": {
+      "n": 15,
+      "min": 8415,
+      "median": 9467,
+      "p90": 10132,
+      "max": 11275
+    },
+    "cached": null,
+    "skipped": null
+  },
+  "peakMemoryMiB": {
+    "total": 2584.2,
+    "pageRenderer": 25.6,
+    "allRenderers": 42.1,
+    "extensionProcesses": 1087.2,
+    "gpuProcess": 1494.6,
+    "browserProcess": 92.3,
+    "other": 24.3
+  },
+  "pageJsHeapUsedMiB": 2,
+  "modelCacheMiB": 570.7,
+  "modelCacheFiles": [
+    {
+      "cache": "transformers-cache",
+      "file": "main/preprocessor_config.json",
+      "bytes": 2673
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "main/tokenizer_config.json",
+      "bytes": 197658
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "main/tokenizer.json",
+      "bytes": 2297961
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "main/config.json",
+      "bytes": 5432
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "main/generation_config.json",
+      "bytes": 292
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "onnx/encoder_model_q4.onnx",
+      "bytes": 30058778
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "onnx/decoder_model_merged_q4.onnx",
+      "bytes": 64393474
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "onnx/vision_encoder_q4.onnx",
+      "bytes": 81236858
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "onnx/embed_tokens_q4.onnx",
+      "bytes": 157560063
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "onnx/embed_tokens_fp16.onnx",
+      "bytes": 78780290
+    },
+    {
+      "cache": "transformers-cache",
+      "file": "onnx/vision_encoder_fp16.onnx",
+      "bytes": 183930536
+    }
+  ],
+  "steps": [
+    {
+      "step": 1,
+      "settle": 311,
+      "attempts": 1,
+      "dom": 6,
+      "capture": 39,
+      "vision": 2543,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 312,
+      "server": 6839,
+      "vlm": 6827,
+      "network": 12,
+      "execute": 5
+    },
+    {
+      "step": 2,
+      "settle": 309,
+      "attempts": 1,
+      "dom": 3,
+      "capture": 45,
+      "vision": 2029,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 17,
+      "server": 6404,
+      "vlm": 6397,
+      "network": 7,
+      "execute": 487
+    },
+    {
+      "step": 3,
+      "settle": 317,
+      "attempts": 1,
+      "dom": 5,
+      "capture": 40,
+      "vision": 2081,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 20,
+      "server": 6629,
+      "vlm": 6617,
+      "network": 12,
+      "execute": 2
+    },
+    {
+      "step": 4,
+      "settle": 290,
+      "attempts": 1,
+      "dom": 5,
+      "capture": 36,
+      "vision": 2053,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 18,
+      "server": 6446,
+      "vlm": 6439,
+      "network": 7,
+      "execute": 2
+    },
+    {
+      "step": 5,
+      "settle": 308,
+      "attempts": 1,
+      "dom": 3,
+      "capture": 35,
+      "vision": 2035,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 16,
+      "server": 6739,
+      "vlm": 6729,
+      "network": 10,
+      "execute": 2
+    },
+    {
+      "step": 6,
+      "settle": 309,
+      "attempts": 1,
+      "dom": 2,
+      "capture": 40,
+      "vision": 2013,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 16,
+      "server": 7521,
+      "vlm": 7514,
+      "network": 7,
+      "execute": 2
+    },
+    {
+      "step": 7,
+      "settle": 291,
+      "attempts": 1,
+      "dom": 5,
+      "capture": 40,
+      "vision": 2031,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 16,
+      "server": 7407,
+      "vlm": 7132,
+      "network": 275,
+      "execute": 2
+    },
+    {
+      "step": 8,
+      "settle": 319,
+      "attempts": 1,
+      "dom": 6,
+      "capture": 39,
+      "vision": 2044,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 18,
+      "server": 8845,
+      "vlm": 8835,
+      "network": 10,
+      "execute": 4
+    },
+    {
+      "step": 9,
+      "settle": 310,
+      "attempts": 1,
+      "dom": 2,
+      "capture": 35,
+      "vision": 2048,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 15,
+      "server": 7101,
+      "vlm": 7094,
+      "network": 7,
+      "execute": 2
+    },
+    {
+      "step": 10,
+      "settle": 308,
+      "attempts": 1,
+      "dom": 4,
+      "capture": 60,
+      "vision": 2071,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 15,
+      "server": 7007,
+      "vlm": 6997,
+      "network": 10,
+      "execute": 2
+    },
+    {
+      "step": 11,
+      "settle": 307,
+      "attempts": 1,
+      "dom": 5,
+      "capture": 41,
+      "vision": 2059,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 15,
+      "server": 7424,
+      "vlm": 7416,
+      "network": 8,
+      "execute": 4
+    },
+    {
+      "step": 12,
+      "settle": 291,
+      "attempts": 1,
+      "dom": 2,
+      "capture": 37,
+      "vision": 2082,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 18,
+      "server": 7699,
+      "vlm": 7689,
+      "network": 10,
+      "execute": 3
+    },
+    {
+      "step": 13,
+      "settle": 312,
+      "attempts": 1,
+      "dom": 2,
+      "capture": 37,
+      "vision": 2032,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 15,
+      "server": 6917,
+      "vlm": 6908,
+      "network": 9,
+      "execute": 2
+    },
+    {
+      "step": 14,
+      "settle": 310,
+      "attempts": 1,
+      "dom": 5,
+      "capture": 51,
+      "vision": 2012,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 17,
+      "server": 6151,
+      "vlm": 6143,
+      "network": 8,
+      "execute": 1
+    },
+    {
+      "step": 15,
+      "settle": 306,
+      "attempts": 1,
+      "dom": 2,
+      "capture": 37,
+      "vision": 1990,
+      "visionMode": "ran",
+      "device": "webgpu",
+      "mask": 17,
+      "server": 6061,
+      "vlm": 6054,
+      "network": 7,
+      "execute": 2
+    }
+  ],
+  "memorySamples": [
+    {
+      "t": 1791212341935,
+      "total": 2709753856,
+      "browser": 91697152,
+      "other": 25432064,
+      "gpu": 1413591040,
+      "renderer": 39067648,
+      "extension": 1139965952,
+      "maxRenderer": 22024192,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 3
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1348.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 1065.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21
+        }
+      ]
+    },
+    {
+      "t": 1791212343481,
+      "total": 2368442368,
+      "browser": 91672576,
+      "other": 25432064,
+      "gpu": 1424703488,
+      "renderer": 39067648,
+      "extension": 787566592,
+      "maxRenderer": 22024192,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 3
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1358.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 729
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21
+        }
+      ]
+    },
+    {
+      "t": 1791212344890,
+      "total": 2395463680,
+      "browser": 92139520,
+      "other": 25513984,
+      "gpu": 1435484160,
+      "renderer": 39067648,
+      "extension": 803258368,
+      "maxRenderer": 22024192,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 3
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1369
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 744
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21
+        }
+      ]
+    },
+    {
+      "t": 1791212346282,
+      "total": 2363609088,
+      "browser": 92127232,
+      "other": 25513984,
+      "gpu": 1403584512,
+      "renderer": 39067648,
+      "extension": 803315712,
+      "maxRenderer": 22024192,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 3
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1338.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 744
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21
+        }
+      ]
+    },
+    {
+      "t": 1791212347669,
+      "total": 2363609088,
+      "browser": 92127232,
+      "other": 25513984,
+      "gpu": 1403584512,
+      "renderer": 39067648,
+      "extension": 803315712,
+      "maxRenderer": 22024192,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 3
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1338.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 744
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21
+        }
+      ]
+    },
+    {
+      "t": 1791212349055,
+      "total": 2363408384,
+      "browser": 92176384,
+      "other": 25260032,
+      "gpu": 1403584512,
+      "renderer": 39067648,
+      "extension": 803319808,
+      "maxRenderer": 22024192,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1338.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 744
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21
+        }
+      ]
+    },
+    {
+      "t": 1791212350448,
+      "total": 2363432960,
+      "browser": 92176384,
+      "other": 25280512,
+      "gpu": 1403584512,
+      "renderer": 39067648,
+      "extension": 803323904,
+      "maxRenderer": 22024192,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1338.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 744
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21
+        }
+      ]
+    },
+    {
+      "t": 1791212351971,
+      "total": 2386825216,
+      "browser": 96804864,
+      "other": 25280512,
+      "gpu": 1421811712,
+      "renderer": 39583744,
+      "extension": 803344384,
+      "maxRenderer": 22540288,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 92.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1355.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 744.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.5
+        }
+      ]
+    },
+    {
+      "t": 1791212353458,
+      "total": 2433998848,
+      "browser": 92139520,
+      "other": 25280512,
+      "gpu": 1449340928,
+      "renderer": 39583744,
+      "extension": 827654144,
+      "maxRenderer": 22540288,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1382.2
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 767.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.5
+        }
+      ]
+    },
+    {
+      "t": 1791212354853,
+      "total": 2435747840,
+      "browser": 92184576,
+      "other": 25280512,
+      "gpu": 1455038464,
+      "renderer": 39583744,
+      "extension": 823660544,
+      "maxRenderer": 22540288,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1387.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 763.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.5
+        }
+      ]
+    },
+    {
+      "t": 1791212356257,
+      "total": 2412380160,
+      "browser": 92184576,
+      "other": 25280512,
+      "gpu": 1431666688,
+      "renderer": 39587840,
+      "extension": 823660544,
+      "maxRenderer": 22544384,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1365.3
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 763.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.5
+        }
+      ]
+    },
+    {
+      "t": 1791212357631,
+      "total": 2412388352,
+      "browser": 92188672,
+      "other": 25280512,
+      "gpu": 1431666688,
+      "renderer": 39591936,
+      "extension": 823660544,
+      "maxRenderer": 22548480,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1365.3
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 763.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.5
+        }
+      ]
+    },
+    {
+      "t": 1791212359142,
+      "total": 2412388352,
+      "browser": 92188672,
+      "other": 25280512,
+      "gpu": 1431666688,
+      "renderer": 39591936,
+      "extension": 823660544,
+      "maxRenderer": 22548480,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1365.3
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 763.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.5
+        }
+      ]
+    },
+    {
+      "t": 1791212360992,
+      "total": 2348085248,
+      "browser": 92188672,
+      "other": 25296896,
+      "gpu": 1434562560,
+      "renderer": 39608320,
+      "extension": 756428800,
+      "maxRenderer": 22564864,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 87.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1368.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 699.3
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.5
+        }
+      ]
+    },
+    {
+      "t": 1791212362759,
+      "total": 2383941632,
+      "browser": 92348416,
+      "other": 25296896,
+      "gpu": 1499189248,
+      "renderer": 39714816,
+      "extension": 727392256,
+      "maxRenderer": 22671360,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1429.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 671.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212364242,
+      "total": 2412601344,
+      "browser": 92348416,
+      "other": 25296896,
+      "gpu": 1503907840,
+      "renderer": 39714816,
+      "extension": 751333376,
+      "maxRenderer": 22671360,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1434.2
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.5
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212365625,
+      "total": 2413023232,
+      "browser": 92348416,
+      "other": 25419776,
+      "gpu": 1503907840,
+      "renderer": 39714816,
+      "extension": 751632384,
+      "maxRenderer": 22671360,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1434.2
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212367036,
+      "total": 2360664064,
+      "browser": 92262400,
+      "other": 25419776,
+      "gpu": 1451634688,
+      "renderer": 39714816,
+      "extension": 751632384,
+      "maxRenderer": 22671360,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1384.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212368417,
+      "total": 2360631296,
+      "browser": 92229632,
+      "other": 25419776,
+      "gpu": 1451634688,
+      "renderer": 39714816,
+      "extension": 751632384,
+      "maxRenderer": 22671360,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1384.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212369893,
+      "total": 2344820736,
+      "browser": 92229632,
+      "other": 25419776,
+      "gpu": 1435824128,
+      "renderer": 39714816,
+      "extension": 751632384,
+      "maxRenderer": 22671360,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1369.3
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212371328,
+      "total": 2353057792,
+      "browser": 92229632,
+      "other": 25419776,
+      "gpu": 1443889152,
+      "renderer": 39886848,
+      "extension": 751632384,
+      "maxRenderer": 22843392,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1377
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.8
+        }
+      ]
+    },
+    {
+      "t": 1791212373093,
+      "total": 2457534464,
+      "browser": 92229632,
+      "other": 25419776,
+      "gpu": 1505890304,
+      "renderer": 40361984,
+      "extension": 793632768,
+      "maxRenderer": 23318528,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1436.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 734.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.2
+        }
+      ]
+    },
+    {
+      "t": 1791212374538,
+      "total": 2386817024,
+      "browser": 92246016,
+      "other": 25419776,
+      "gpu": 1470365696,
+      "renderer": 40361984,
+      "extension": 758423552,
+      "maxRenderer": 23318528,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1402.3
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 701.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.2
+        }
+      ]
+    },
+    {
+      "t": 1791212375929,
+      "total": 2386817024,
+      "browser": 92246016,
+      "other": 25419776,
+      "gpu": 1470365696,
+      "renderer": 40361984,
+      "extension": 758423552,
+      "maxRenderer": 23318528,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1402.3
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 701.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.2
+        }
+      ]
+    },
+    {
+      "t": 1791212377313,
+      "total": 2373021696,
+      "browser": 92246016,
+      "other": 25419776,
+      "gpu": 1456570368,
+      "renderer": 40361984,
+      "extension": 758423552,
+      "maxRenderer": 23318528,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 88
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1389.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 701.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.2
+        }
+      ]
+    },
+    {
+      "t": 1791212378720,
+      "total": 2353594368,
+      "browser": 84180992,
+      "other": 25079808,
+      "gpu": 1445548032,
+      "renderer": 40361984,
+      "extension": 758423552,
+      "maxRenderer": 23318528,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 80.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1378.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 701.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.2
+        }
+      ]
+    },
+    {
+      "t": 1791212380115,
+      "total": 2352222208,
+      "browser": 84201472,
+      "other": 25284608,
+      "gpu": 1445548032,
+      "renderer": 40361984,
+      "extension": 756826112,
+      "maxRenderer": 23318528,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 80.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1378.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.5
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.3
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 699.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.2
+        }
+      ]
+    },
+    {
+      "t": 1791212381539,
+      "total": 2292490240,
+      "browser": 84930560,
+      "other": 25358336,
+      "gpu": 1441800192,
+      "renderer": 40103936,
+      "extension": 700297216,
+      "maxRenderer": 22695936,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 81
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1375
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.6
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 645.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212382958,
+      "total": 2396082176,
+      "browser": 83062784,
+      "other": 25067520,
+      "gpu": 1510371328,
+      "renderer": 40116224,
+      "extension": 737464320,
+      "maxRenderer": 22708224,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1440.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 681.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.7
+        }
+      ]
+    },
+    {
+      "t": 1791212384615,
+      "total": 2345078784,
+      "browser": 84729856,
+      "other": 25165824,
+      "gpu": 1444098048,
+      "renderer": 40116224,
+      "extension": 750968832,
+      "maxRenderer": 22708224,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 80.8
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1377.2
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.4
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.7
+        }
+      ]
+    },
+    {
+      "t": 1791212386019,
+      "total": 2345181184,
+      "browser": 84746240,
+      "other": 25194496,
+      "gpu": 1444098048,
+      "renderer": 40116224,
+      "extension": 751026176,
+      "maxRenderer": 22708224,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 80.8
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1377.2
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.4
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.7
+        }
+      ]
+    },
+    {
+      "t": 1791212387418,
+      "total": 2346541056,
+      "browser": 86872064,
+      "other": 25096192,
+      "gpu": 1443430400,
+      "renderer": 40116224,
+      "extension": 751026176,
+      "maxRenderer": 22708224,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82.8
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1376.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.4
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.7
+        }
+      ]
+    },
+    {
+      "t": 1791212388821,
+      "total": 2346508288,
+      "browser": 86839296,
+      "other": 25096192,
+      "gpu": 1443430400,
+      "renderer": 40116224,
+      "extension": 751026176,
+      "maxRenderer": 22708224,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82.8
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1376.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.4
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.7
+        }
+      ]
+    },
+    {
+      "t": 1791212390200,
+      "total": 2346508288,
+      "browser": 86839296,
+      "other": 25096192,
+      "gpu": 1443430400,
+      "renderer": 40116224,
+      "extension": 751026176,
+      "maxRenderer": 22708224,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82.8
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1376.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.4
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.7
+        }
+      ]
+    },
+    {
+      "t": 1791212391595,
+      "total": 2282741760,
+      "browser": 82989056,
+      "other": 25067520,
+      "gpu": 1425420288,
+      "renderer": 40079360,
+      "extension": 709185536,
+      "maxRenderer": 22671360,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1359.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 654.3
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212393057,
+      "total": 2409414656,
+      "browser": 86745088,
+      "other": 25075712,
+      "gpu": 1514881024,
+      "renderer": 40091648,
+      "extension": 742621184,
+      "maxRenderer": 22683648,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82.7
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1444.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 686.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212394459,
+      "total": 2342817792,
+      "browser": 82317312,
+      "other": 25104384,
+      "gpu": 1451323392,
+      "renderer": 40091648,
+      "extension": 743981056,
+      "maxRenderer": 22683648,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.5
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1384.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.4
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 687.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212395847,
+      "total": 2342645760,
+      "browser": 82317312,
+      "other": 25104384,
+      "gpu": 1451151360,
+      "renderer": 40091648,
+      "extension": 743981056,
+      "maxRenderer": 22683648,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.5
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.4
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 687.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212397235,
+      "total": 2342653952,
+      "browser": 82317312,
+      "other": 25112576,
+      "gpu": 1451151360,
+      "renderer": 40091648,
+      "extension": 743981056,
+      "maxRenderer": 22683648,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.5
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.4
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 687.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212398617,
+      "total": 2342576128,
+      "browser": 82292736,
+      "other": 25059328,
+      "gpu": 1451151360,
+      "renderer": 40091648,
+      "extension": 743981056,
+      "maxRenderer": 22683648,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.5
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 687.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212400001,
+      "total": 2342047744,
+      "browser": 82292736,
+      "other": 25063424,
+      "gpu": 1450618880,
+      "renderer": 40091648,
+      "extension": 743981056,
+      "maxRenderer": 22683648,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.5
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 687.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212401843,
+      "total": 2338582528,
+      "browser": 82411520,
+      "other": 25075712,
+      "gpu": 1447325696,
+      "renderer": 39796736,
+      "extension": 743972864,
+      "maxRenderer": 22388736,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.6
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1380.3
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 687.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.4
+        }
+      ]
+    },
+    {
+      "t": 1791212403332,
+      "total": 2412425216,
+      "browser": 86278144,
+      "other": 24969216,
+      "gpu": 1495310336,
+      "renderer": 40497152,
+      "extension": 765370368,
+      "maxRenderer": 23089152,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1426
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 707.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212404739,
+      "total": 2366996480,
+      "browser": 87072768,
+      "other": 25059328,
+      "gpu": 1456508928,
+      "renderer": 40497152,
+      "extension": 757858304,
+      "maxRenderer": 23089152,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 83
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1389
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 700.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212406132,
+      "total": 2366996480,
+      "browser": 87072768,
+      "other": 25059328,
+      "gpu": 1456508928,
+      "renderer": 40497152,
+      "extension": 757858304,
+      "maxRenderer": 23089152,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 83
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1389
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 700.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212407514,
+      "total": 2360557568,
+      "browser": 82288640,
+      "other": 25059328,
+      "gpu": 1454854144,
+      "renderer": 40497152,
+      "extension": 757858304,
+      "maxRenderer": 23089152,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.5
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1387.5
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 700.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212408901,
+      "total": 2360557568,
+      "browser": 82288640,
+      "other": 25059328,
+      "gpu": 1454854144,
+      "renderer": 40497152,
+      "extension": 757858304,
+      "maxRenderer": 23089152,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.5
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1387.5
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 700.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212410370,
+      "total": 2350735360,
+      "browser": 82231296,
+      "other": 25059328,
+      "gpu": 1445089280,
+      "renderer": 40497152,
+      "extension": 757858304,
+      "maxRenderer": 23089152,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1378.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 700.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212412191,
+      "total": 2311106560,
+      "browser": 82378752,
+      "other": 25067520,
+      "gpu": 1450844160,
+      "renderer": 40030208,
+      "extension": 712785920,
+      "maxRenderer": 22622208,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.6
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 657.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 21.6
+        }
+      ]
+    },
+    {
+      "t": 1791212413650,
+      "total": 2334244864,
+      "browser": 86605824,
+      "other": 25067520,
+      "gpu": 1447989248,
+      "renderer": 40501248,
+      "extension": 734081024,
+      "maxRenderer": 23093248,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82.6
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1380.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 678
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212415150,
+      "total": 2402754560,
+      "browser": 81952768,
+      "other": 24969216,
+      "gpu": 1502281728,
+      "renderer": 40497152,
+      "extension": 753053696,
+      "maxRenderer": 23089152,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1432.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 696.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212416554,
+      "total": 2405879808,
+      "browser": 83619840,
+      "other": 25059328,
+      "gpu": 1510027264,
+      "renderer": 40497152,
+      "extension": 746676224,
+      "maxRenderer": 23089152,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.7
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1440.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 690
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212417947,
+      "total": 2346549248,
+      "browser": 83619840,
+      "other": 25059328,
+      "gpu": 1450692608,
+      "renderer": 40501248,
+      "extension": 746676224,
+      "maxRenderer": 23093248,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.7
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383.5
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.6
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 690
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212419336,
+      "total": 2344484864,
+      "browser": 82194432,
+      "other": 25042944,
+      "gpu": 1450147840,
+      "renderer": 40423424,
+      "extension": 746676224,
+      "maxRenderer": 23093248,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 690
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212420839,
+      "total": 2344484864,
+      "browser": 82194432,
+      "other": 25042944,
+      "gpu": 1450147840,
+      "renderer": 40423424,
+      "extension": 746676224,
+      "maxRenderer": 23093248,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 690
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212422226,
+      "total": 2344484864,
+      "browser": 82194432,
+      "other": 25042944,
+      "gpu": 1450147840,
+      "renderer": 40423424,
+      "extension": 746676224,
+      "maxRenderer": 23093248,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 690
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212423635,
+      "total": 2332655616,
+      "browser": 82161664,
+      "other": 25042944,
+      "gpu": 1438351360,
+      "renderer": 40423424,
+      "extension": 746676224,
+      "maxRenderer": 23093248,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1371.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 690
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22
+        }
+      ]
+    },
+    {
+      "t": 1791212425043,
+      "total": 2334285824,
+      "browser": 82784256,
+      "other": 25079808,
+      "gpu": 1439109120,
+      "renderer": 40636416,
+      "extension": 746676224,
+      "maxRenderer": 23306240,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1372.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 690
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.2
+        }
+      ]
+    },
+    {
+      "t": 1791212427024,
+      "total": 2403930112,
+      "browser": 81866752,
+      "other": 24952832,
+      "gpu": 1504559104,
+      "renderer": 40894464,
+      "extension": 751656960,
+      "maxRenderer": 23564288,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1434.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 694.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.5
+        }
+      ]
+    },
+    {
+      "t": 1791212428434,
+      "total": 2419650560,
+      "browser": 83460096,
+      "other": 25042944,
+      "gpu": 1513611264,
+      "renderer": 40894464,
+      "extension": 756641792,
+      "maxRenderer": 23564288,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.6
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1443.5
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 699.5
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.5
+        }
+      ]
+    },
+    {
+      "t": 1791212429839,
+      "total": 2381160448,
+      "browser": 83460096,
+      "other": 25042944,
+      "gpu": 1475792896,
+      "renderer": 40894464,
+      "extension": 755970048,
+      "maxRenderer": 23564288,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.6
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1407.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 698.9
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.5
+        }
+      ]
+    },
+    {
+      "t": 1791212431216,
+      "total": 2366775296,
+      "browser": 82161664,
+      "other": 25042944,
+      "gpu": 1462706176,
+      "renderer": 40894464,
+      "extension": 755970048,
+      "maxRenderer": 23564288,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1394.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 698.9
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.5
+        }
+      ]
+    },
+    {
+      "t": 1791212432615,
+      "total": 2366775296,
+      "browser": 82161664,
+      "other": 25042944,
+      "gpu": 1462706176,
+      "renderer": 40894464,
+      "extension": 755970048,
+      "maxRenderer": 23564288,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1394.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 698.9
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.5
+        }
+      ]
+    },
+    {
+      "t": 1791212434001,
+      "total": 2354995200,
+      "browser": 82161664,
+      "other": 25042944,
+      "gpu": 1450926080,
+      "renderer": 40894464,
+      "extension": 755970048,
+      "maxRenderer": 23564288,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1383.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 698.9
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.5
+        }
+      ]
+    },
+    {
+      "t": 1791212435401,
+      "total": 2311524352,
+      "browser": 82784256,
+      "other": 24952832,
+      "gpu": 1452146688,
+      "renderer": 41054208,
+      "extension": 710586368,
+      "maxRenderer": 23724032,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1384.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 655.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 22.6
+        }
+      ]
+    },
+    {
+      "t": 1791212436843,
+      "total": 2409631744,
+      "browser": 86360064,
+      "other": 24952832,
+      "gpu": 1507737600,
+      "renderer": 44191744,
+      "extension": 746389504,
+      "maxRenderer": 26861568,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1437.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 689.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 25.6
+        }
+      ]
+    },
+    {
+      "t": 1791212438281,
+      "total": 2419892224,
+      "browser": 87093248,
+      "other": 25042944,
+      "gpu": 1517371392,
+      "renderer": 44191744,
+      "extension": 746192896,
+      "maxRenderer": 26861568,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 83.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1446.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 689.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 25.6
+        },
+        {
+          "pid": 3524,
+          "kind": "gpu",
+          "privateMiB": 0.6
+        }
+      ]
+    },
+    {
+      "t": 1791212439672,
+      "total": 2401509376,
+      "browser": 82157568,
+      "other": 25092096,
+      "gpu": 1503875072,
+      "renderer": 44191744,
+      "extension": 746192896,
+      "maxRenderer": 26861568,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1434.2
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.4
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 689.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 25.6
+        }
+      ]
+    },
+    {
+      "t": 1791212441200,
+      "total": 2362470400,
+      "browser": 82157568,
+      "other": 25059328,
+      "gpu": 1464811520,
+      "renderer": 44191744,
+      "extension": 746250240,
+      "maxRenderer": 26861568,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1397
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.3
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 689.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 25.6
+        }
+      ]
+    },
+    {
+      "t": 1791212442587,
+      "total": 2362372096,
+      "browser": 82145280,
+      "other": 24973312,
+      "gpu": 1464811520,
+      "renderer": 44191744,
+      "extension": 746250240,
+      "maxRenderer": 26861568,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1397
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 689.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 25.6
+        }
+      ]
+    },
+    {
+      "t": 1791212443979,
+      "total": 2352828416,
+      "browser": 82145280,
+      "other": 24940544,
+      "gpu": 1456349184,
+      "renderer": 43143168,
+      "extension": 746250240,
+      "maxRenderer": 25812992,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1388.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 689.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.6
+        }
+      ]
+    },
+    {
+      "t": 1791212445397,
+      "total": 2352631808,
+      "browser": 82296832,
+      "other": 24944640,
+      "gpu": 1456963584,
+      "renderer": 42176512,
+      "extension": 746250240,
+      "maxRenderer": 24846336,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.5
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1389.5
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 689.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 23.7
+        }
+      ]
+    },
+    {
+      "t": 1791212446898,
+      "total": 2419720192,
+      "browser": 81956864,
+      "other": 24842240,
+      "gpu": 1501405184,
+      "renderer": 42692608,
+      "extension": 768823296,
+      "maxRenderer": 25362432,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1431.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.1
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 711.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.2
+        }
+      ]
+    },
+    {
+      "t": 1791212448292,
+      "total": 2468831232,
+      "browser": 83554304,
+      "other": 24932352,
+      "gpu": 1559175168,
+      "renderer": 42692608,
+      "extension": 758476800,
+      "maxRenderer": 25362432,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.7
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1486.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 701.3
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.2
+        }
+      ]
+    },
+    {
+      "t": 1791212449691,
+      "total": 2443616256,
+      "browser": 83554304,
+      "other": 24932352,
+      "gpu": 1533960192,
+      "renderer": 42692608,
+      "extension": 758476800,
+      "maxRenderer": 25362432,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.7
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1462.9
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 701.3
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.2
+        }
+      ]
+    },
+    {
+      "t": 1791212451133,
+      "total": 2380156928,
+      "browser": 82145280,
+      "other": 24932352,
+      "gpu": 1471909888,
+      "renderer": 42692608,
+      "extension": 758476800,
+      "maxRenderer": 25362432,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1403.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 701.3
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.2
+        }
+      ]
+    },
+    {
+      "t": 1791212452596,
+      "total": 2380038144,
+      "browser": 82100224,
+      "other": 24858624,
+      "gpu": 1471909888,
+      "renderer": 42692608,
+      "extension": 758476800,
+      "maxRenderer": 25362432,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1403.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 701.3
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.2
+        }
+      ]
+    },
+    {
+      "t": 1791212454401,
+      "total": 2366488576,
+      "browser": 82100224,
+      "other": 24858624,
+      "gpu": 1458360320,
+      "renderer": 42692608,
+      "extension": 758476800,
+      "maxRenderer": 25362432,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1390.8
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 701.3
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.2
+        }
+      ]
+    },
+    {
+      "t": 1791212455855,
+      "total": 2321657856,
+      "browser": 82272256,
+      "other": 24862720,
+      "gpu": 1458974720,
+      "renderer": 42647552,
+      "extension": 712900608,
+      "maxRenderer": 25317376,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.5
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1391.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 657.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.1
+        }
+      ]
+    },
+    {
+      "t": 1791212457331,
+      "total": 2414669824,
+      "browser": 86310912,
+      "other": 24862720,
+      "gpu": 1518034944,
+      "renderer": 43061248,
+      "extension": 742400000,
+      "maxRenderer": 25731072,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1447.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 685.9
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.5
+        }
+      ]
+    },
+    {
+      "t": 1791212458770,
+      "total": 2464960512,
+      "browser": 83259392,
+      "other": 24858624,
+      "gpu": 1565978624,
+      "renderer": 43061248,
+      "extension": 747802624,
+      "maxRenderer": 25731072,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1493.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 691.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.5
+        }
+      ]
+    },
+    {
+      "t": 1791212460180,
+      "total": 2439491584,
+      "browser": 83259392,
+      "other": 24858624,
+      "gpu": 1540550656,
+      "renderer": 43061248,
+      "extension": 747761664,
+      "maxRenderer": 25731072,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1469.2
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 691.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.5
+        }
+      ]
+    },
+    {
+      "t": 1791212461792,
+      "total": 2381639680,
+      "browser": 83259392,
+      "other": 24858624,
+      "gpu": 1482698752,
+      "renderer": 43061248,
+      "extension": 747761664,
+      "maxRenderer": 25731072,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 79.4
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1414
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 691.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.5
+        }
+      ]
+    },
+    {
+      "t": 1791212463225,
+      "total": 2379677696,
+      "browser": 81936384,
+      "other": 24858624,
+      "gpu": 1482067968,
+      "renderer": 43061248,
+      "extension": 747753472,
+      "maxRenderer": 25731072,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1413.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 691
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.5
+        }
+      ]
+    },
+    {
+      "t": 1791212464621,
+      "total": 2362740736,
+      "browser": 81936384,
+      "other": 24858624,
+      "gpu": 1465131008,
+      "renderer": 43061248,
+      "extension": 747753472,
+      "maxRenderer": 25731072,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1397.3
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 691
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.5
+        }
+      ]
+    },
+    {
+      "t": 1791212466032,
+      "total": 2362740736,
+      "browser": 81936384,
+      "other": 24858624,
+      "gpu": 1465131008,
+      "renderer": 43061248,
+      "extension": 747753472,
+      "maxRenderer": 25731072,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1397.3
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 691
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.5
+        }
+      ]
+    },
+    {
+      "t": 1791212467433,
+      "total": 2323279872,
+      "browser": 82112512,
+      "other": 24768512,
+      "gpu": 1425399808,
+      "renderer": 43245568,
+      "extension": 747753472,
+      "maxRenderer": 25915392,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1359.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.1
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 691
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.7
+        }
+      ]
+    },
+    {
+      "t": 1791212468893,
+      "total": 2452955136,
+      "browser": 86028288,
+      "other": 24768512,
+      "gpu": 1552302080,
+      "renderer": 43249664,
+      "extension": 746606592,
+      "maxRenderer": 25919488,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1480.4
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.1
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 689.9
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.7
+        }
+      ]
+    },
+    {
+      "t": 1791212470304,
+      "total": 2474536960,
+      "browser": 86831104,
+      "other": 24895488,
+      "gpu": 1559216128,
+      "renderer": 43249664,
+      "extension": 760344576,
+      "maxRenderer": 25919488,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 82.8
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1487
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 703.1
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.7
+        }
+      ]
+    },
+    {
+      "t": 1791212471681,
+      "total": 2395066368,
+      "browser": 81977344,
+      "other": 24858624,
+      "gpu": 1484922880,
+      "renderer": 43249664,
+      "extension": 760057856,
+      "maxRenderer": 25919488,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1416.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 702.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.7
+        }
+      ]
+    },
+    {
+      "t": 1791212473071,
+      "total": 2385022976,
+      "browser": 81977344,
+      "other": 24858624,
+      "gpu": 1474879488,
+      "renderer": 43249664,
+      "extension": 760057856,
+      "maxRenderer": 25919488,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1406.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 702.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.7
+        }
+      ]
+    },
+    {
+      "t": 1791212474462,
+      "total": 2365607936,
+      "browser": 81977344,
+      "other": 24858624,
+      "gpu": 1455464448,
+      "renderer": 43249664,
+      "extension": 760057856,
+      "maxRenderer": 25919488,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1388
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 702.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.7
+        }
+      ]
+    },
+    {
+      "t": 1791212475864,
+      "total": 2365046784,
+      "browser": 81997824,
+      "other": 24858624,
+      "gpu": 1454882816,
+      "renderer": 43249664,
+      "extension": 760057856,
+      "maxRenderer": 25919488,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1387.5
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 702.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.7
+        }
+      ]
+    },
+    {
+      "t": 1791212477299,
+      "total": 2298159104,
+      "browser": 82149376,
+      "other": 24862720,
+      "gpu": 1432522752,
+      "renderer": 43044864,
+      "extension": 715579392,
+      "maxRenderer": 25714688,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1366.2
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 660.4
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.5
+        }
+      ]
+    },
+    {
+      "t": 1791212478783,
+      "total": 2438365184,
+      "browser": 81788928,
+      "other": 24768512,
+      "gpu": 1520181248,
+      "renderer": 43307008,
+      "extension": 768319488,
+      "maxRenderer": 25976832,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1449.8
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.1
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 710.7
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212480195,
+      "total": 2461126656,
+      "browser": 83902464,
+      "other": 24862720,
+      "gpu": 1560027136,
+      "renderer": 43307008,
+      "extension": 749027328,
+      "maxRenderer": 25976832,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 80
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1487.8
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 692.3
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212481599,
+      "total": 2435870720,
+      "browser": 83902464,
+      "other": 24862720,
+      "gpu": 1534820352,
+      "renderer": 43307008,
+      "extension": 748978176,
+      "maxRenderer": 25976832,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 80
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1463.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 692.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212482992,
+      "total": 2374180864,
+      "browser": 81977344,
+      "other": 24862720,
+      "gpu": 1475055616,
+      "renderer": 43307008,
+      "extension": 748978176,
+      "maxRenderer": 25976832,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1406.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 692.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212484403,
+      "total": 2355294208,
+      "browser": 81985536,
+      "other": 24924160,
+      "gpu": 1456095232,
+      "renderer": 43307008,
+      "extension": 748982272,
+      "maxRenderer": 25976832,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1388.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 692.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212485809,
+      "total": 2355290112,
+      "browser": 81985536,
+      "other": 24924160,
+      "gpu": 1456095232,
+      "renderer": 43307008,
+      "extension": 748978176,
+      "maxRenderer": 25976832,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1388.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 692.2
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212487233,
+      "total": 2452451328,
+      "browser": 85856256,
+      "other": 24772608,
+      "gpu": 1520533504,
+      "renderer": 43376640,
+      "extension": 777912320,
+      "maxRenderer": 26046464,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 81.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1450.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.1
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 719.8
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212488753,
+      "total": 2469867520,
+      "browser": 85856256,
+      "other": 24772608,
+      "gpu": 1560248320,
+      "renderer": 43376640,
+      "extension": 755613696,
+      "maxRenderer": 26046464,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 81.9
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1488
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.1
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 698.5
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212490150,
+      "total": 2484617216,
+      "browser": 87162880,
+      "other": 24862720,
+      "gpu": 1567227904,
+      "renderer": 43376640,
+      "extension": 761987072,
+      "maxRenderer": 26046464,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 83.1
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1494.6
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 704.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212491560,
+      "total": 2403377152,
+      "browser": 81977344,
+      "other": 24862720,
+      "gpu": 1491173376,
+      "renderer": 43376640,
+      "extension": 761987072,
+      "maxRenderer": 26046464,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1422.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 704.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212492954,
+      "total": 2394054656,
+      "browser": 81977344,
+      "other": 24862720,
+      "gpu": 1481850880,
+      "renderer": 43376640,
+      "extension": 761987072,
+      "maxRenderer": 26046464,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1413.2
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 704.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212494351,
+      "total": 2377175040,
+      "browser": 81977344,
+      "other": 24862720,
+      "gpu": 1464971264,
+      "renderer": 43376640,
+      "extension": 761987072,
+      "maxRenderer": 26046464,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.2
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1397.1
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 704.6
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.8
+        }
+      ]
+    },
+    {
+      "t": 1791212495779,
+      "total": 2378121216,
+      "browser": 82149376,
+      "other": 24866816,
+      "gpu": 1465581568,
+      "renderer": 43143168,
+      "extension": 762380288,
+      "maxRenderer": 25812992,
+      "processes": [
+        {
+          "pid": 5512,
+          "kind": "browser",
+          "privateMiB": 78.3
+        },
+        {
+          "pid": 20988,
+          "kind": "other",
+          "privateMiB": 2.9
+        },
+        {
+          "pid": 4076,
+          "kind": "gpu",
+          "privateMiB": 1397.7
+        },
+        {
+          "pid": 26316,
+          "kind": "other",
+          "privateMiB": 12.2
+        },
+        {
+          "pid": 27496,
+          "kind": "other",
+          "privateMiB": 8.7
+        },
+        {
+          "pid": 12600,
+          "kind": "renderer",
+          "privateMiB": 16.5
+        },
+        {
+          "pid": 26864,
+          "kind": "extension",
+          "privateMiB": 22.1
+        },
+        {
+          "pid": 26124,
+          "kind": "extension",
+          "privateMiB": 705
+        },
+        {
+          "pid": 3988,
+          "kind": "renderer",
+          "privateMiB": 24.6
+        }
+      ]
+    }
+  ]
+}
