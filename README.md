@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center"><a href="https://youtu.be/d4-FHSMkEp4"><img src="assets/demo-thumbnail.png" alt="Privag AI demo video (4:48)" width="720"></a></p>
+<p align="center"><a href="https://youtu.be/M8DdeQI0ygo"><img src="assets/demo-thumbnail.png" alt="Privag AI demo video (4:48)" width="720"></a></p>
 
 # Privag AI — an on-device PII firewall for browser agents
 
