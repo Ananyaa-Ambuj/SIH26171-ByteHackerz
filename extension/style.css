@@ -124,8 +124,20 @@ body {
   gap: 8px;
 }
 
-.brand-icon {
-  font-size: 22px;
+/* Logo per theme: dark is the default palette, [data-theme="light"] swaps it (images are 2x for crispness) */
+.brand-logo {
+  display: block;
+  height: 24px;
+  width: auto;
+}
+
+.brand-logo-light,
+[data-theme="light"] .brand-logo-dark {
+  display: none;
+}
+
+[data-theme="light"] .brand-logo-light {
+  display: block;
 }
 
 .title {
