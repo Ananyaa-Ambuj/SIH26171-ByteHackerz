@@ -5,8 +5,10 @@ const imageInput = document.getElementById('imageInput');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const output = document.getElementById('output');
+const outlineText = document.getElementById('outlineText');
 
 let isModelReady = false;
+let modelDevice = null;
 
 // 1. Spawn the Florence Web Worker (the extension's build: `npm run build`, served from the repo root)
 const worker = new Worker('../extension/florence-worker.bundle.js', { type: 'module' });
@@ -14,7 +16,7 @@ worker.postMessage({ type: 'LOAD_MODEL' });
 
 // 2. Listen for worker updates (download progress & results)
 worker.addEventListener('message', (e) => {
-    const { type, message, progress, regions, latencyMs, error, device } = e.data;
+    const { type, message, progress, regions, otherText, latencyMs, error, device } = e.data;
 
     if (type === 'STATUS') {
         statusDiv.textContent = `ℹ️ ${message}`;
@@ -25,19 +27,20 @@ worker.addEventListener('message', (e) => {
         }
     } else if (type === 'MODEL_READY') {
         isModelReady = true;
+        modelDevice = device;
         statusDiv.textContent = `✅ Florence-2 Model Ready on ${device === 'webgpu' ? 'WebGPU' : 'WASM (CPU fallback)'}!`;
         statusDiv.className = 'ready';
         detectBtn.disabled = false;
     } else if (type === 'RESULTS') {
-        statusDiv.textContent = `✅ Detection Complete in ${latencyMs} ms!`;
+        statusDiv.textContent = `✅ Detection Complete in ${latencyMs} ms on ${device}!`;
         statusDiv.className = 'ready';
         detectBtn.disabled = false;
 
-        // Display structured results
-        output.textContent = JSON.stringify({ latencyMs, regionsFound: regions.length, regions }, null, 2);
+        // Display structured results (the worker returns boxes and types only, never the recognised text)
+        output.textContent = JSON.stringify({ latencyMs, device, regionsFound: regions.length, regions, otherTextLines: otherText.length }, null, 2);
 
         // Draw redaction boxes on the canvas
-        drawRedactions(regions);
+        drawRedactions(regions, otherText);
     } else if (type === 'ERROR') {
         statusDiv.textContent = `❌ Error: ${error}`;
         statusDiv.className = 'loading';
@@ -46,9 +49,9 @@ worker.addEventListener('message', (e) => {
     }
 });
 
-// 3. Helper to draw redactions on the canvas
-// 3. Helper to draw REAL Gaussian Blur and Clean Black Boxes
-function drawRedactions(regions) {
+// 3. Helper to draw redactions on the canvas: solid grey mask for faces, black boxes for text PII,
+// and (optionally) an outline around every other OCR line
+function drawRedactions(regions, otherText) {
     regions.forEach((r) => {
         // Add a 4px safety padding around the bounding box
         const padX = 4;
@@ -58,23 +61,15 @@ function drawRedactions(regions) {
         const w = r.bbox.w + (padX * 2);
         const h = r.bbox.h + (padY * 2);
 
-        if (r.method === 'gaussian_blur') {
-            // REAL Canvas Gaussian Blur
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(x, y, w, h);
-            ctx.clip(); // Restrict blur only to this box
-            ctx.filter = 'blur(14px)';
-            ctx.drawImage(canvas, 0, 0);
-            ctx.restore();
+        if (r.method === 'solid_mask') {
+            // Solid grey mask over the face
+            ctx.fillStyle = '#7f7f7f';
+            ctx.fillRect(x, y, w, h);
 
-            // Clean border + label badge
-            ctx.strokeStyle = 'rgba(37, 99, 235, 0.8)';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(x, y, w, h);
+            // Label badge
             ctx.fillStyle = '#2563eb';
             ctx.font = 'bold 11px sans-serif';
-            ctx.fillText('BLURRED FACE', x + 4, Math.max(16, y - 4));
+            ctx.fillText('MASKED FACE', x + 4, Math.max(16, y - 4));
         } else {
             // Solid, clean black privacy bar
             ctx.fillStyle = '#000000';
@@ -86,6 +81,13 @@ function drawRedactions(regions) {
             ctx.fillText(`• REDACTED (${r.type})`, x + w + 8, y + h - 2);
         }
     });
+
+    // Text that is not PII stays readable; the outline only shows what OCR found
+    if (outlineText.checked) {
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 1;
+        otherText.forEach(({ bbox }) => ctx.strokeRect(bbox.x, bbox.y, bbox.w, bbox.h));
+    }
 }
 
 // 4. Generate a Sample Form with fake PII for instant 1-click testing
@@ -149,7 +151,7 @@ imageInput.addEventListener('change', (e) => {
 detectBtn.addEventListener('click', () => {
     if (!isModelReady) return;
 
-    statusDiv.textContent = '⚡ Running Florence-2 Detection on WebGPU...';
+    statusDiv.textContent = `⚡ Running Florence-2 Detection on ${modelDevice === 'webgpu' ? 'WebGPU' : 'WASM'}...`;
     statusDiv.className = 'loading';
     detectBtn.disabled = true;
 

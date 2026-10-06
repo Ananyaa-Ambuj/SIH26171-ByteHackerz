@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privag demo: citizen services form</title>
+  <!-- A demo page for Privag AI. Every value is SYNTHETIC: IDs are chosen to pass their checksums (see
+       tests/README.md), 4111 1111 1111 1111 is a published test card number, example.com/.org are reserved.
+       The order number and PNR are deliberately NOT valid IDs, so they stay readable (validators, not regexes).
+       Serve the repository root and open /demo/:  python -m http.server 8080   ->  http://localhost:8080/demo/ -->
+  <style>
+    :root { --ink: #14213d; --muted: #5c677d; --line: #d6dbe4; --brand: #1f4e79; --bg: #f4f6fa; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; color: var(--ink); background: var(--bg); }
+    header { background: var(--brand); color: #fff; padding: 14px 28px; display: flex; align-items: baseline; gap: 16px; }
+    header h1 { margin: 0; font-size: 22px; }
+    header span { font-size: 13px; opacity: 0.85; }
+    main { max-width: 980px; margin: 20px auto; padding: 0 20px; display: grid; gap: 18px; }
+    section { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 18px 22px; }
+    h2 { margin: 0 0 12px; font-size: 18px; color: var(--brand); }
+    .facts { display: grid; grid-template-columns: 1fr 200px; gap: 18px; align-items: start; }
+    .row { font-size: 18px; margin: 8px 0; }
+    .note { font-size: 13px; color: var(--muted); }
+    #photo { width: 200px; height: 266px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+    form { display: grid; grid-template-columns: 180px 1fr; gap: 10px 14px; align-items: center; }
+    label { font-size: 15px; }
+    input, select { font-size: 16px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; width: 100%; max-width: 360px; }
+    .actions { grid-column: 2; display: flex; gap: 10px; flex-wrap: wrap; }
+    button { font-size: 15px; padding: 7px 14px; border-radius: 5px; border: 1px solid var(--brand); background: #fff; color: var(--brand); cursor: pointer; }
+    button.primary { background: var(--brand); color: #fff; }
+    #status { font-size: 15px; color: #0b6e4f; min-height: 1.2em; }
+    #ticker { font-size: 18px; white-space: nowrap; overflow: hidden; height: 28px; position: relative; }
+    #ticker span { position: absolute; left: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Demo Citizen Services</h1>
+    <span>A demo page for Privag AI. All data is synthetic.</span>
+  </header>
+  <main>
+    <section>
+      <h2>1. Applicant on file</h2>
+      <div class="facts">
+        <div>
+          <div class="row">Aadhaar: <b>2345</b> 6789 0124 &nbsp; PAN: ABCPE1234F</div>
+          <div class="row">Mobile: 98765 43210 &nbsp; Email: ravi.kumar@example.com</div>
+          <div class="row">UPI: ravi.kumar@okicici &nbsp; IFSC: SBIN0001234</div>
+          <div class="row">Card on file: 4111 1111 1111 1111</div>
+          <div class="row">Order no. 1234 5678 9012 &nbsp; PNR 4521 8830 77</div>
+          <p class="note">The order number and PNR are not ID numbers, so they stay readable.</p>
+        </div>
+        <div>
+          <img id="photo" alt="Applicant photo" src="../tests/privacy/fixture/face.jpg">
+          <button type="button" id="togglePhoto">Hide photo</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Application form</h2>
+      <form id="application" onsubmit="event.preventDefault(); document.getElementById('status').textContent = 'Payment of Rs 1 submitted.';">
+        <label for="fullName">Full name</label>
+        <input id="fullName" autocomplete="name">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email">
+        <label for="pan">PAN</label>
+        <input id="pan" aria-label="PAN">
+        <label for="travelClass">Travel class</label>
+        <select id="travelClass">
+          <option value="">Choose a class</option>
+          <option>General</option>
+          <option>Sleeper</option>
+          <option>AC 3-tier</option>
+        </select>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password">
+        <label for="otp">One-time code</label>
+        <input id="otp" autocomplete="one-time-code" inputmode="numeric">
+        <div class="actions">
+          <button type="submit" class="primary">Pay Rs 1 &amp; submit</button>
+          <a href="https://example.org/help">Help (external site)</a>
+        </div>
+        <div class="actions" id="status" role="status"></div>
+      </form>
+    </section>
+
+    <section>
+      <h2>3. Live updates</h2>
+      <p class="note">A ticker that moves a phone number on every frame: Privag withholds frames from a page that will not hold still.</p>
+      <div id="ticker"><span>Helpline 98765 43210</span></div>
+      <button type="button" id="toggleTicker">Start ticker</button>
+    </section>
+  </main>
+  <script>
+    document.getElementById('togglePhoto').addEventListener('click', (e) => {
+      const photo = document.getElementById('photo');
+      photo.hidden = !photo.hidden;
+      e.target.textContent = photo.hidden ? 'Show photo' : 'Hide photo';
+    });
+    let ticking = false;
+    let x = 0;
+    function tick() {
+      if (!ticking) return;
+      x = (x + 3) % 600;
+      document.querySelector('#ticker span').style.left = `${x}px`;
+      requestAnimationFrame(tick);
+    }
+    document.getElementById('toggleTicker').addEventListener('click', (e) => {
+      ticking = !ticking;
+      e.target.textContent = ticking ? 'Stop ticker' : 'Start ticker';
+      if (ticking) requestAnimationFrame(tick);
+    });
+  </script>
+</body>
+</html>

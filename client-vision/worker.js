@@ -2,9 +2,9 @@ import {
     env,
     Florence2ForConditionalGeneration,
     AutoProcessor,
-    AutoTokenizer,
     RawImage,
 } from '@huggingface/transformers';
+import { classifyLine, mergeOverlappingBoxes } from './ocr-pii.js';
 
 // Load ONNX Runtime's WebGPU/WASM runtime from the files copied next to this bundle by
 // copy-ort-runtime.mjs. By default transformers.js imports it from the jsdelivr CDN through a
@@ -12,129 +12,139 @@ import {
 // WASM fallback, since ONNX Runtime refuses to re-initialize after a failed first attempt.
 env.backends.onnx.wasm.wasmPaths = new URL('./', import.meta.url).href;
 
+const MODEL_ID = 'onnx-community/Florence-2-base-ft';
+
+// Most tokens Florence may generate for <OCR_WITH_REGION>; text that needs more is cut off there
+const OCR_MAX_TOKENS = 512;
+
+// Per-module precision recommended for Florence-2 on WebGPU (transformers.js dtypes guide):
+// the encoders are sensitive to quantization; fp16/q4 keeps download and VRAM small
+// (full fp32 weights take twice the bits of fp16 and eight times those of q4).
+const WEBGPU_DTYPE = {
+    embed_tokens: 'fp16',
+    vision_encoder: 'fp16',
+    encoder_model: 'q4',
+    decoder_model_merged: 'q4',
+};
+
 let model = null;
 let processor = null;
-let tokenizer = null;
+// The device the loaded model runs on ('webgpu' or 'wasm'), reported with every result
+let device = null;
+// The load in progress (a promise of true/false), so a repeated LOAD_MODEL never starts a second one
+let loading = null;
+// Set once WebGPU fails during a detection: every later load goes straight to WASM
+let webgpuFailed = false;
+// The one WebGPU -> WASM switch after a failed detection, shared by detections that fail together
+let wasmSwitch = null;
 
-// Regex patterns for text PII
-const PII_PATTERNS = {
-    // Allows optional spaces/dashes between digits
-    aadhaar: /\d{4}[\s-]?\d{4}[\s-]?\d{4}/,
-    // PAN: 5 letters, 4 digits, 1 letter (case insensitive)
-    pan: /[A-Z]{5}[0-9O]{4}[A-Z]/i,
-    // Phone: 10 digits, optionally written as 5+5 (e.g. "98765 43210")
-    phone: /[6-9]\d{4}[\s-]?\d{5}/,
-    // Email
-    email: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
-};
-
-function matchPII(text) {
-    const matches = [];
-    for (const [type, regex] of Object.entries(PII_PATTERNS)) {
-        if (regex.test(text)) {
-            matches.push(type);
-        }
-    }
-    return matches.length > 0 ? matches : null;
-}
-
-// Labels that mark an OCR line as PII even when OCR garbles the value itself, e.g. "PAN Card: ABCDE123RF"
-// (a 4 misread as R) or "Aadhaar No: 9876432 1098" (a dropped digit) slip past the strict patterns above
-const PII_LABELS = {
-    aadhaar: /aadha?ar|adhaa?r/i,
-    pan: /\bPAN\b/,
-    phone: /phone|mobile/i,
-    email: /e-?mail/i,
-};
-
-function matchLabeledPII(text) {
-    // Only when the line also holds a value-looking token (3+ digits, or an '@'), so bare field
-    // labels such as "PAN Number" stay readable for the agent
-    const hasValue = (text.match(/[A-Za-z0-9@._-]{6,}/g) || [])
-        .some((token) => token.includes('@') || (token.match(/\d/g) || []).length >= 3);
-    if (!hasValue) return null;
-    const matches = Object.keys(PII_LABELS).filter((type) => PII_LABELS[type].test(text));
-    return matches.length > 0 ? matches : null;
-}
-
-// Repeatedly replaces any two intersecting {x, y, w, h} boxes with their bounding union until none intersect
-function mergeOverlappingBoxes(boxes) {
-    const merged = boxes.map((b) => ({ ...b }));
-    let changed = true;
-    while (changed) {
-        changed = false;
-        // Rescan from the start after every merge: the grown union can reach boxes already checked
-        for (let i = 0; i < merged.length && !changed; i++) {
-            for (let j = i + 1; j < merged.length && !changed; j++) {
-                const a = merged[i];
-                const b = merged[j];
-                if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) {
-                    const x = Math.min(a.x, b.x);
-                    const y = Math.min(a.y, b.y);
-                    merged[i] = { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
-                    merged.splice(j, 1);
-                    changed = true;
-                }
-            }
-        }
-    }
-    return merged;
-}
-
-async function loadModel() {
-    const model_id = 'onnx-community/Florence-2-base-ft';
-
-    self.postMessage({ type: 'STATUS', message: 'Loading Florence-2 on WebGPU...' });
-
+// Why WebGPU cannot be used in this worker, or null when an adapter is available
+async function webgpuUnavailable() {
+    if (!navigator.gpu) return 'no navigator.gpu';
     try {
-        model = await Florence2ForConditionalGeneration.from_pretrained(model_id, {
-            // Per-module precision recommended for Florence-2 on WebGPU (transformers.js dtypes guide):
-            // the encoders are sensitive to quantization; fp16/q4 keeps download and VRAM small
-            // (full fp32 is ~1 GB for base-ft and ~3.1 GB for large-ft, too much for a 4 GB GPU).
-            dtype: {
-                embed_tokens: 'fp16',
-                vision_encoder: 'fp16',
-                encoder_model: 'q4',
-                decoder_model_merged: 'q4',
-            },
-            device: 'webgpu',
-            progress_callback: (progress) => {
-                self.postMessage({ type: 'PROGRESS', progress });
-            },
-        });
-
-        processor = await AutoProcessor.from_pretrained(model_id);
-        tokenizer = await AutoTokenizer.from_pretrained(model_id);
-
-        self.postMessage({ type: 'MODEL_READY', device: 'webgpu' });
+        return (await navigator.gpu.requestAdapter()) ? null : 'no WebGPU adapter';
     } catch (err) {
-        self.postMessage({ type: 'STATUS', message: `WebGPU unavailable (${err.message}). Falling back to WASM...` });
-
-        try {
-            model = await Florence2ForConditionalGeneration.from_pretrained(model_id, {
-                dtype: 'q4',
-                device: 'wasm',
-                progress_callback: (progress) => {
-                    self.postMessage({ type: 'PROGRESS', progress });
-                },
-            });
-            processor = await AutoProcessor.from_pretrained(model_id);
-            tokenizer = await AutoTokenizer.from_pretrained(model_id);
-
-            self.postMessage({ type: 'MODEL_READY', device: 'wasm' });
-        } catch (wasmErr) {
-            self.postMessage({ type: 'ERROR', error: `WASM fallback failed: ${wasmErr.message}` });
-        }
+        return `adapter request failed: ${err.message}`;
     }
 }
 
-async function detectPII(imageDataUrl) {
-    if (!model || !processor) {
+// Loads the Florence-2 weights on one device and announces it with MODEL_READY
+async function loadOn(dev) {
+    model = await Florence2ForConditionalGeneration.from_pretrained(MODEL_ID, {
+        dtype: dev === 'webgpu' ? WEBGPU_DTYPE : 'q4',
+        device: dev,
+        progress_callback: (progress) => {
+            self.postMessage({ type: 'PROGRESS', progress });
+        },
+    });
+    device = dev;
+    self.postMessage({ type: 'MODEL_READY', device });
+}
+
+// WebGPU when it is available; WASM when it is missing, fails to load, or already failed during a detection
+async function loadModel() {
+    const missing = webgpuFailed ? 'it failed during a detection' : await webgpuUnavailable();
+    self.postMessage({
+        type: 'STATUS',
+        message: missing ? `WebGPU not available (${missing}). Loading Florence-2 on WASM...` : 'Loading Florence-2 on WebGPU...',
+    });
+    // Image preprocessing and the tokenizer, the same for both devices
+    processor ??= await AutoProcessor.from_pretrained(MODEL_ID);
+
+    if (!missing) {
+        try {
+            await loadOn('webgpu');
+            return;
+        } catch (err) {
+            self.postMessage({ type: 'STATUS', message: `WebGPU load failed (${err.message}). Falling back to WASM...` });
+        }
+    }
+    try {
+        await loadOn('wasm');
+    } catch (err) {
+        throw new Error(`WASM load failed: ${err.message}`);
+    }
+}
+
+// Runs one model load; a failure is reported as a load ERROR (no requestId). Resolves to whether it worked.
+function startLoad(load) {
+    loading = load()
+        .then(() => true, (err) => {
+            self.postMessage({ type: 'ERROR', error: err.message });
+            return false;
+        })
+        .finally(() => {
+            loading = null;
+        });
+    return loading;
+}
+
+// WebGPU failed during a detection: free the GPU model and load the WASM one, at most once per worker
+function switchToWasm(err) {
+    wasmSwitch ??= startLoad(async () => {
+        webgpuFailed = true;
+        self.postMessage({ type: 'STATUS', message: `WebGPU failed during detection (${err.message}). Switching to WASM...` });
+        const gpuModel = model;
+        model = null;
+        device = null;
+        // A broken GPU session may fail to release; the switch goes on
+        await gpuModel?.dispose().catch(() => {});
+        try {
+            await loadOn('wasm');
+        } catch (wasmErr) {
+            throw new Error(`WASM load failed: ${wasmErr.message}`);
+        }
+    });
+    return wasmSwitch;
+}
+
+// One detection. If WebGPU fails while running it, switch to WASM and run this image again there.
+async function detect(imageDataUrl) {
+    // Decoded first, so a bad image is reported as such and never taken for a WebGPU failure
+    const image = await RawImage.fromURL(imageDataUrl);
+    // A detection that arrives during the switch waits for it instead of failing
+    if (wasmSwitch) await wasmSwitch;
+    const usedDevice = device;
+    try {
+        return { device: usedDevice, ...(await detectPII(model, image)) };
+    } catch (err) {
+        if (usedDevice !== 'webgpu') throw err;
+        if (!(await switchToWasm(err))) {
+            throw new Error(`WebGPU failed during detection (${err.message}) and WASM could not be loaded`);
+        }
+        return { device, ...(await detectPII(model, image)) };
+    }
+}
+
+// Faces and text PII in one decoded image, run on the model m
+async function detectPII(m, image) {
+    if (!m || !processor) {
         throw new Error('Florence-2 model is not loaded yet');
     }
 
-    const image = await RawImage.fromURL(imageDataUrl);
     const regions = [];
+    // Every OCR line that is not PII, box only: the caller can black-box all text where the DOM pass cannot read
+    const otherText = [];
 
     // Helper to normalize boxes (whether 4-point bbox or 8-point quad_box)
     function extractBox(box) {
@@ -151,13 +161,20 @@ async function detectPII(imageDataUrl) {
         return { x: box[0], y: box[1], w: box[2] - box[0], h: box[3] - box[1] };
     }
 
+    // Whole pixels, rounded outwards so no edge of a face or a glyph falls outside the box
+    function toIntBox(b) {
+        const x = Math.floor(b.x);
+        const y = Math.floor(b.y);
+        return { x, y, w: Math.ceil(b.x + b.w) - x, h: Math.ceil(b.y + b.h) - y };
+    }
+
     // -----------------------------------------------------------------
     // Task A: Object Detection (<OD>) — Detect faces & merge overlaps
     // -----------------------------------------------------------------
     const odTask = '<OD>';
     const odPrompts = processor.construct_prompts(odTask);
     const odInputs = await processor(image, odPrompts);
-    const odOutput = await model.generate({ ...odInputs, max_new_tokens: 256 });
+    const odOutput = await m.generate({ ...odInputs, max_new_tokens: 256 });
     const odText = processor.batch_decode(odOutput, { skip_special_tokens: false })[0];
     const odParsed = processor.post_process_generation(odText, odTask, image.size);
     const odData = odParsed[odTask] || odParsed;
@@ -175,20 +192,10 @@ async function detectPII(imageDataUrl) {
     }
 
     // Merge overlapping face-part boxes (eyes, head, person) into ONE clean box per person.
-    // Boxes that don't overlap stay separate, so two people far apart don't blur everything between them.
+    // Boxes that don't overlap stay separate, so two people far apart don't get one mask over everything between them.
+    // Faces get a solid mask, not a blur (decision D1).
     mergeOverlappingBoxes(rawFaces).forEach((face) => {
-        regions.push({
-            type: 'face',
-            source: 'florence_od',
-            method: 'gaussian_blur',
-            confidence: 0.95,
-            bbox: {
-                x: Math.round(face.x),
-                y: Math.round(face.y),
-                w: Math.round(face.w),
-                h: Math.round(face.h),
-            },
-        });
+        regions.push({ type: 'face', source: 'florence_od', method: 'solid_mask', bbox: toIntBox(face) });
     });
 
     // -----------------------------------------------------------------
@@ -197,38 +204,30 @@ async function detectPII(imageDataUrl) {
     const ocrTask = '<OCR_WITH_REGION>';
     const ocrPrompts = processor.construct_prompts(ocrTask);
     const ocrInputs = await processor(image, ocrPrompts);
-    const ocrOutput = await model.generate({ ...ocrInputs, max_new_tokens: 512 });
+    const ocrOutput = await m.generate({ ...ocrInputs, max_new_tokens: OCR_MAX_TOKENS });
+    // Output that reached the token limit was cut off: lines after the cut are never reported, so where they are is
+    // unknown and the caller masks every area OCR ran on (fail closed)
+    const ocrTruncated = (ocrOutput.dims?.at(-1) ?? 0) >= OCR_MAX_TOKENS;
     const ocrText = processor.batch_decode(ocrOutput, { skip_special_tokens: false })[0];
     const ocrParsed = processor.post_process_generation(ocrText, ocrTask, image.size);
     const ocrData = ocrParsed[ocrTask] || ocrParsed;
     const ocrBoxes = ocrData?.quad_boxes || ocrData?.bboxes;
 
-    console.log('[Florence OCR Raw Output]:', ocrData);
-
+    // Never log ocrData: it holds every recognised line, PII included
     if (ocrData && ocrBoxes && ocrData.labels) {
         ocrData.labels.forEach((text, idx) => {
-            const piiTypes = matchPII(text) || matchLabeledPII(text);
-            if (piiTypes) {
-                const b = extractBox(ocrBoxes[idx]);
-                regions.push({
-                    type: piiTypes.join(', '),
-                    types: piiTypes,
-                    source: 'florence_ocr',
-                    method: 'black_box',
-                    confidence: 0.85,
-                    text_snippet: text,
-                    bbox: {
-                        x: Math.round(b.x),
-                        y: Math.round(b.y),
-                        w: Math.round(b.w),
-                        h: Math.round(b.h),
-                    },
-                });
+            // Results carry boxes and types only, never the recognised text
+            const bbox = toIntBox(extractBox(ocrBoxes[idx]));
+            const pii = classifyLine(text);
+            if (pii) {
+                regions.push({ type: pii.type, source: 'florence_ocr', method: 'black_box', bbox });
+            } else {
+                otherText.push({ bbox });
             }
         });
     }
 
-    return regions;
+    return { regions, otherText, ocrTruncated };
 }
 
 // Worker Message Listener — Interface to Extension / Webpage
@@ -237,24 +236,28 @@ self.addEventListener('message', async (e) => {
     const { type, imageDataUrl, requestId } = e.data;
 
     if (type === 'LOAD_MODEL') {
-        try {
-            await loadModel();
-        } catch (err) {
-            self.postMessage({ type: 'ERROR', error: err.message });
+        // Safe to repeat: answered with MODEL_READY once loaded, ignored while a load runs, retried after a failure
+        if (model) {
+            self.postMessage({ type: 'MODEL_READY', device });
+        } else if (!loading) {
+            startLoad(loadModel);
         }
     }
 
     if (type === 'DETECT') {
         try {
             const startTime = performance.now();
-            const regions = await detectPII(imageDataUrl);
+            const { device: usedDevice, regions, otherText, ocrTruncated } = await detect(imageDataUrl);
             const elapsedMs = Math.round(performance.now() - startTime);
 
             self.postMessage({
                 type: 'RESULTS',
                 requestId,
-                regions,
                 latencyMs: elapsedMs,
+                device: usedDevice,
+                regions,
+                otherText,
+                ocrTruncated,
             });
         } catch (err) {
             self.postMessage({ type: 'ERROR', requestId, error: err.message });

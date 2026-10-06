@@ -10,9 +10,11 @@
     <!-- Header -->
     <header class="header">
       <div class="brand">
-        <div class="brand-icon">🛡️</div>
         <div>
-          <h1 class="title">Privag AI</h1>
+          <h1 class="title">
+            <img class="brand-logo brand-logo-dark" src="logo-compact-dark.png" alt="Privag AI">
+            <img class="brand-logo brand-logo-light" src="logo-compact-light.png" alt="Privag AI">
+          </h1>
           <p class="subtitle">On-Device PII Firewall & Agent</p>
         </div>
       </div>
@@ -36,6 +38,21 @@
       </div>
     </div>
 
+    <!-- Shown only while the Privag server cannot be reached -->
+    <section id="serverHelp" class="section card server-help" hidden>
+      <div class="card-header">
+        <span class="card-title">Start the Privag server to run the agent</span>
+        <button id="serverRetryBtn" class="btn btn-secondary btn-sm">Check again</button>
+      </div>
+      <p class="help-text">No server answers at <code id="serverHelpUrl"></code>. In a terminal, from the repository folder:</p>
+      <pre class="server-help-cmd">cd server
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python app.py</pre>
+      <p class="help-text">(On Linux or macOS use <code>.venv/bin/python</code>.) The server's setup page then opens in your browser: enter the OpenAI-compatible URL of your model (for example Ollama or vLLM).</p>
+      <p class="help-text"><strong>Sanitize Only</strong> works without the server: it shows the masked frame the agent would send.</p>
+    </section>
+
     <!-- Server Settings Bar -->
     <section class="section card settings-card">
       <div class="settings-header" id="settingsToggle">
@@ -56,7 +73,7 @@
     <section class="section card">
       <label for="taskInput" class="input-label">Agent Task / Goal</label>
       <textarea id="taskInput" class="textarea-input" rows="2" placeholder="e.g. Click the login button and proceed..."></textarea>
-      <p class="help-text">Aadhaar, PAN, phone, email and card numbers in the task are faked before sending. Wrap other secrets, like a password, as {{secret}}.</p>
+      <p class="help-text">Aadhaar, PAN, card, phone, email, UPI, IFSC and labelled OTPs in the task are replaced by placeholders before sending. Wrap other secrets as {{secret}} to keep them out of the request; typing passwords and OTPs is left to you.</p>
 
       <!-- Action Buttons -->
       <div class="btn-grid">
@@ -68,13 +85,32 @@
         </button>
         <button id="clearButton" class="btn btn-ghost">Clear</button>
       </div>
+
+      <!-- Pause / confirmation / question banner: the task waits here for the user -->
+      <div id="runBanner" class="run-banner" hidden>
+        <span id="runBannerText" class="run-banner-text"></span>
+        <div class="run-banner-actions">
+          <button id="resumeButton" class="btn btn-primary btn-sm" hidden>Resume</button>
+          <button id="allowButton" class="btn btn-primary btn-sm" hidden>Allow once</button>
+        </div>
+        <!-- The agent's question: the answer is masked like the task before it is sent -->
+        <form id="answerForm" class="run-banner-answer" hidden>
+          <input type="text" id="answerInput" class="text-input" maxlength="500" autocomplete="off" placeholder="Your answer" aria-label="Your answer to the agent" />
+          <button type="submit" class="btn btn-primary btn-sm">Answer</button>
+        </form>
+      </div>
+
+      <!-- The model's announcement when it ends a task with "done"; stays until the next task or Clear -->
+      <div id="doneBanner" class="run-banner run-banner-done" role="status" hidden>
+        <span id="doneBannerText" class="run-banner-text"></span>
+      </div>
     </section>
 
     <!-- Visual Perception Canvas Preview -->
     <section class="section card">
       <div class="card-header">
         <span class="card-title">Sanitized Perception (Client-Side)</span>
-        <span id="privacyStatus" class="tag tag-safe">100% Zero Leakage</span>
+        <span id="privacyStatus" class="tag tag-safe">Masked on-device</span>
       </div>
       <div class="canvas-wrapper">
         <canvas id="screenshotCanvas"></canvas>
@@ -126,6 +162,9 @@
     </section>
   </div>
 
+  <script src="validators.js"></script>
+  <script src="action-gate.js"></script>
+  <script src="redaction-manifest.js"></script>
   <script src="pii-masker.js"></script>
   <script src="sidepanel.js"></script>
 </body>

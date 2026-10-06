@@ -13,27 +13,50 @@ let nextRequestId = 1;
 const visionCache = new Map();
 const VISION_CACHE_SIZE = 8;
 
+// A detection that takes longer than this is treated as failed, so a stuck worker withholds the frame
+// instead of hanging the agent
+const DETECT_TIMEOUT_MS = 180000;
+
 // Set-of-Marks outline colours, cycled so neighbouring refs stay distinguishable
 const MARK_COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2'];
+
+// Solid mask colour for faces and profile photos (distinct from the black boxes over text)
+const SOLID_MASK_COLOR = '#7f7f7f';
+
+// Requests waiting for the worker, so a crashed worker can fail them all at once
+const pending = new Map();
+
+// Set when this page runs inside a Firefox panel (offscreen.html?host=<id>; Firefox has no offscreen API): it
+// then answers only that panel and tags what it broadcasts, so other windows' panels and hosts ignore it.
+// Chrome's offscreen document has no host id and serves every panel.
+const host = new URLSearchParams(location.search).get('host');
+const broadcast = (data) => chrome.runtime.sendMessage(host ? { ...data, host } : data).catch(() => {});
 
 // 3. Forward model loading progress to the extension runtime (sidepanel)
 worker.addEventListener('message', (e) => {
     if (e.data.type === 'STATUS') {
         console.log('[Florence Offscreen]', e.data.message);
-        chrome.runtime.sendMessage(e.data).catch(() => {});
+        broadcast(e.data);
     } else if (e.data.type === 'PROGRESS') {
-        console.log('[Florence Download]', e.data.progress);
-        chrome.runtime.sendMessage(e.data).catch(() => {});
+        broadcast(e.data);
     } else if (e.data.type === 'MODEL_READY') {
         console.log(`[Florence] Model is ready on ${e.data.device}!`);
         modelState = e.data;
-        chrome.runtime.sendMessage(e.data).catch(() => {});
+        broadcast(e.data);
     } else if (e.data.type === 'ERROR' && e.data.requestId === undefined) {
         // Model loading failed (detection errors carry a requestId and are answered by detect())
         console.error('[Florence] Model failed to load:', e.data.error);
         modelState = e.data;
-        chrome.runtime.sendMessage(e.data).catch(() => {});
+        broadcast(e.data);
     }
+});
+
+// A worker that crashed outright answers nothing: fail every waiting detection and mark the model unusable
+worker.addEventListener('error', (e) => {
+    modelState = { type: 'ERROR', error: `Vision worker crashed: ${e.message || 'unknown error'}` };
+    broadcast(modelState);
+    for (const fail of pending.values()) fail(new Error(modelState.error));
+    pending.clear();
 });
 
 // One Florence detection on the worker. Replies are matched by requestId, otherwise overlapping calls
@@ -41,12 +64,25 @@ worker.addEventListener('message', (e) => {
 function detect(imageDataUrl) {
     return new Promise((resolve, reject) => {
         const requestId = nextRequestId++;
+        const finish = () => {
+            worker.removeEventListener('message', onReply);
+            clearTimeout(timer);
+            pending.delete(requestId);
+        };
         const onReply = (e) => {
             if (e.data.requestId !== requestId) return;
-            worker.removeEventListener('message', onReply);
+            finish();
             if (e.data.type === 'RESULTS') resolve(e.data);
             else reject(new Error(e.data.error));
         };
+        const timer = setTimeout(() => {
+            finish();
+            reject(new Error('Vision detection timed out'));
+        }, DETECT_TIMEOUT_MS);
+        pending.set(requestId, (err) => {
+            finish();
+            reject(err);
+        });
         worker.addEventListener('message', onReply);
         worker.postMessage({ type: 'DETECT', requestId, imageDataUrl });
     });
@@ -57,21 +93,33 @@ async function sha256Hex(bytes) {
     return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+const contains = (area, x, y) => x >= area.x && x <= area.x + area.w && y >= area.y && y <= area.y + area.h;
+
 // Pass 2, only where DOM scanning cannot read: the media regions, cut out of the screenshot onto a white
-// canvas. No media on screen means nothing is left for vision to find. Without a DOM scan
-// (mediaRegions undefined, e.g. the page blocks content scripts) the whole screenshot is analysed.
+// canvas. No media on screen means nothing is left for vision to find. Faces are solid-masked and text PII
+// black-boxed; inside frames and embedded documents (which the DOM pass cannot read at all) EVERY line of
+// text OCR finds is black-boxed, not only the lines that validate as PII (fail closed).
 async function runVision(img, mediaRegions, domRegions) {
-    if (Array.isArray(mediaRegions) && mediaRegions.length === 0) {
+    if (mediaRegions.length === 0) {
         return { regions: [], latencyMs: 0, mode: 'skipped' };
     }
-    const areas = mediaRegions || [{ x: 0, y: 0, w: img.width, h: img.height }];
+    if (modelState?.type !== 'MODEL_READY') {
+        // A failed load is retried on the next frame that needs vision; meanwhile the frame is withheld
+        if (modelState?.type === 'ERROR') {
+            modelState = null;
+            worker.postMessage({ type: 'LOAD_MODEL' });
+        }
+        const error = new Error('Florence-2 model is not loaded yet');
+        error.code = 'MODEL_NOT_READY';
+        throw error;
+    }
 
     // Crop to the media's bounding box: Florence shrinks every input to 768x768, so a tighter crop
     // leaves more detail on the images themselves
-    const x1 = Math.max(0, Math.floor(Math.min(...areas.map((r) => r.x))));
-    const y1 = Math.max(0, Math.floor(Math.min(...areas.map((r) => r.y))));
-    const x2 = Math.min(img.width, Math.ceil(Math.max(...areas.map((r) => r.x + r.w))));
-    const y2 = Math.min(img.height, Math.ceil(Math.max(...areas.map((r) => r.y + r.h))));
+    const x1 = Math.max(0, Math.floor(Math.min(...mediaRegions.map((r) => r.x))));
+    const y1 = Math.max(0, Math.floor(Math.min(...mediaRegions.map((r) => r.y))));
+    const x2 = Math.min(img.width, Math.ceil(Math.max(...mediaRegions.map((r) => r.x + r.w))));
+    const y2 = Math.min(img.height, Math.ceil(Math.max(...mediaRegions.map((r) => r.y + r.h))));
     if (x2 - x1 < 1 || y2 - y1 < 1) {
         return { regions: [], latencyMs: 0, mode: 'skipped' };
     }
@@ -81,27 +129,56 @@ async function runVision(img, mediaRegions, domRegions) {
     const c = crop.getContext('2d');
     c.fillStyle = '#FFFFFF';
     c.fillRect(0, 0, crop.width, crop.height);
-    for (const r of areas) c.drawImage(img, r.x, r.y, r.w, r.h, r.x - x1, r.y - y1, r.w, r.h);
-    // DOM PII shown over an image (text on a background image) already gets its fake from Pass 1; hide it
-    // from OCR so no vision black box is ever placed on top of a fake value
-    for (const r of domRegions || []) c.fillRect(r.bbox.x - x1 - 4, r.bbox.y - y1 - 3, r.bbox.w + 8, r.bbox.h + 6);
+    for (const r of mediaRegions) c.drawImage(img, r.x, r.y, r.w, r.h, r.x - x1, r.y - y1, r.w, r.h);
+    // DOM PII shown over an image (text on a background image) is already masked by Pass 1; hide it from OCR
+    // so no vision box is ever placed on top of a fake value
+    for (const r of domRegions) c.fillRect(r.bbox.x - x1 - 4, r.bbox.y - y1 - 3, r.bbox.w + 8, r.bbox.h + 6);
 
-    const key =`${x1},${y1}:${await sha256Hex(c.getImageData(0, 0, crop.width, crop.height).data)}`;
-    if (visionCache.has(key)) {
-        return { regions: visionCache.get(key), latencyMs: 0, mode: 'cached' };
+    const key = `${x1},${y1}:${await sha256Hex(c.getImageData(0, 0, crop.width, crop.height).data)}`;
+    let result = visionCache.get(key);
+    const cached = Boolean(result);
+    if (!result) {
+        const detection = await detect(crop.toDataURL('image/png'));
+        const shift = (b) => ({ ...b, x: b.x + x1, y: b.y + y1 });
+        result = {
+            regions: (detection.regions || []).map((r) => ({ ...r, bbox: shift(r.bbox) })),
+            otherText: (detection.otherText || []).map((t) => shift(t.bbox)),
+            latencyMs: detection.latencyMs,
+            device: detection.device,
+            ocrTruncated: Boolean(detection.ocrTruncated),
+        };
+        visionCache.set(key, result);
+        if (visionCache.size > VISION_CACHE_SIZE) visionCache.delete(visionCache.keys().next().value);
     }
 
-    const result = await detect(crop.toDataURL('image/png'));
-    const regions = (result.regions || []).map((r) => ({ ...r, bbox: { ...r.bbox, x: r.bbox.x + x1, y: r.bbox.y + y1 } }));
-    visionCache.set(key, regions);
-    if (visionCache.size > VISION_CACHE_SIZE) visionCache.delete(visionCache.keys().next().value);
-    return { regions, latencyMs: result.latencyMs, mode: 'ran' };
+    const unscannable = mediaRegions.filter((r) => r.unscannable);
+    // Florence can name a face or a text line without giving it a box: what has no position cannot be
+    // masked, so the frame is withheld
+    const noBox = (b) => !(b.w > 0 && b.h > 0);
+    if (result.regions.some((r) => noBox(r.bbox)) || (unscannable.length && result.otherText.some(noBox))) {
+        const error = new Error('the vision model reported a face or text without a usable position');
+        error.code = 'VISION_INCOMPLETE';
+        throw error;
+    }
+    const unverified = result.otherText
+        .filter((b) => unscannable.some((area) => contains(area, b.x + b.w / 2, b.y + b.h / 2)))
+        .map((bbox) => ({ type: 'unverified_text', source: 'florence_ocr', method: 'black_box', bbox }));
+    // OCR stopped at its token limit: text after the cut was never read, so every area it ran on is blacked out
+    const unread = result.ocrTruncated
+        ? mediaRegions.map((r) => ({ type: 'unread_text', source: 'florence_ocr', method: 'black_box', bbox: { x: r.x, y: r.y, w: r.w, h: r.h } }))
+        : [];
+    return {
+        regions: [...result.regions, ...unverified, ...unread],
+        latencyMs: cached ? 0 : result.latencyMs,
+        device: result.device,
+        mode: cached ? 'cached' : 'ran',
+    };
 }
 
 // A DOM detection's fake value, drawn where the real one was on the page's own background colour so the page
 // keeps its structure. Fields keep their border; text gets the black box's padding so no anti-aliased edge
-// of the real value survives. Passwords show a fixed row of dots, which also hides the real length.
-function drawFake(ctx, box, x, y, w, h, label) {
+// of the real value survives.
+function drawFake(ctx, box, x, y, w, h) {
     const field = box.source === 'dom_field';
     const [px, py, pw, ph] = field ? [x + 2, y + 2, w - 4, h - 4] : [Math.max(0, x - 4), Math.max(0, y - 3), w + 8, h + 6];
 
@@ -119,7 +196,7 @@ function drawFake(ctx, box, x, y, w, h, label) {
     ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
     ctx.fillRect(px, py, pw, ph);
 
-    const shown = label === 'password' ? '••••••••' : (box.fake || '');
+    const shown = box.value || '';
     ctx.save();
     ctx.beginPath();
     ctx.rect(px, py, pw, ph);
@@ -138,68 +215,39 @@ function drawFake(ctx, box, x, y, w, h, label) {
     ctx.textBaseline = 'middle';
     ctx.fillText(shown, field ? x + 8 : x, y + h / 2);
     ctx.restore();
-    return shown;
 }
 
-// Pass 3. Image-based (Florence) detections: faces blurred, text in images blacked out. DOM detections: the
-// side panel's format-preserving fake drawn over the real value (semantic_mock). An explicit method always
-// wins over the label heuristics, which only classify regions that arrive without one.
-function redact(ctx, img, boxes) {
+// Pass 3. Every region carries its method (decided by the side panel for DOM detections, by the worker for
+// vision ones): black_box = solid black with padding (passwords, OTPs, card and ID numbers, text in images),
+// solid_mask = solid grey (faces, profile photos), semantic_mock = the vault's format-preserving fake.
+// Masks are drawn first and fakes last, so no box can ever cover a fake value the model may need to read.
+function redact(ctx, boxes) {
     const manifest = { redacted_regions: [] };
+    const order = (box) => (box.method === 'semantic_mock' ? 1 : 0);
 
-    boxes.forEach((box) => {
-        const b = box.bbox || box;
-        let x, y, w, h;
+    [...boxes].sort((a, b) => order(a) - order(b)).forEach((box) => {
+        const { x, y, w, h } = box.bbox;
+        if (!(w > 0 && h > 0)) return;
 
-        // Regions arrive as pre-normalized {x, y, w, h} objects in screenshot pixels
-        x = b.x ?? 0;
-        y = b.y ?? 0;
-        w = b.w ?? b.width ?? 0;
-        h = b.h ?? b.height ?? 0;
-
-        if (w <= 0 || h <= 0) return;
-
-        const label = (box.type || box.label || box.category || '').toLowerCase();
-
-        // Check categories
-        const isImage = label.includes('image') || label.includes('face') || label.includes('photo') || label.includes('picture');
-        const isBlackBox = label.includes('password') || label.includes('secret') || label.includes('card') || label.includes('cvv') || label.includes('aadhaar') || label.includes('pan');
-        const methodUsed = box.method || (isImage ? 'gaussian_blur' : isBlackBox ? 'black_box' : 'semantic_mock');
-        let shown;
-
-        if (methodUsed === 'gaussian_blur') {
-            // --- 1. GAUSSIAN BLUR FOR IMAGES & FACES ---
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(x, y, w, h);
-            ctx.clip();
-            ctx.filter = 'blur(14px)';
-            ctx.drawImage(img, 0, 0);
-            ctx.restore();
-
-        } else if (methodUsed === 'black_box') {
-            // --- 2. SOLID BLACKOUT FOR TEXT PII INSIDE IMAGES ---
-            // 4px padding to prevent anti-aliasing text bleed
+        if (box.method === 'solid_mask') {
+            ctx.fillStyle = SOLID_MASK_COLOR;
+            ctx.fillRect(x, y, w, h);
+        } else if (box.method === 'semantic_mock') {
+            drawFake(ctx, box, x, y, w, h);
+        } else {
+            // black_box, and anything unexpected: 4/3 px padding so no anti-aliased glyph edge survives
             ctx.fillStyle = '#000000';
             ctx.fillRect(Math.max(0, x - 4), Math.max(0, y - 3), w + 8, h + 6);
-
-        } else {
-            // --- 3. FORMAT-PRESERVING FAKE FOR PII FOUND IN THE DOM ---
-            shown = drawFake(ctx, box, x, y, w, h, label);
         }
 
         manifest.redacted_regions.push({
-            type: label || 'pii',
-            method: methodUsed,
-            source: box.source || 'unknown',
-            // The fake shown in the image, so the model can reuse it exactly (the vault restores the real value)
-            ...(shown !== undefined && { value: shown }),
-            bbox: {
-                x: Math.round(x),
-                y: Math.round(y),
-                w: Math.round(w),
-                h: Math.round(h)
-            }
+            type: box.type || 'pii',
+            method: box.method === 'solid_mask' || box.method === 'semantic_mock' ? box.method : 'black_box',
+            source: box.source,
+            // The placeholder shown in the image (fakes) or stood in for it (black-boxed IDs), so the model
+            // can reuse it exactly; the vault restores the real value only where it belongs
+            ...(box.method !== 'solid_mask' && typeof box.value === 'string' && { value: box.value }),
+            bbox: { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)), w: Math.round(w), h: Math.round(h) },
         });
     });
 
@@ -231,6 +279,7 @@ function drawMarks(ctx, elements, imageWidth) {
 
 // 4. Listen for detection requests from sidepanel.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (host && message.host !== host) return;
     if (message.action === 'GET_MODEL_STATUS') {
         sendResponse(modelState);
         return;
@@ -240,31 +289,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const img = new Image();
         img.onload = async () => {
             try {
-                const vision = await runVision(img, message.mediaRegions, message.domRegions);
+                const domRegions = message.domRegions || [];
+                const vision = await runVision(img, message.mediaRegions || [], domRegions);
 
+                const maskStart = performance.now();
                 const canvas = document.createElement('canvas');
                 canvas.width = img.width;
                 canvas.height = img.height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0);
 
-                // Vision regions (Pass 2) first, DOM-scan fakes (Pass 1, already in screenshot pixels) last, so
-                // no black box or blur can ever cover a fake value
-                const { manifest } = redact(ctx, img, [...vision.regions, ...(message.domRegions || [])]);
+                const { manifest } = redact(ctx, [...vision.regions, ...domRegions]);
                 drawMarks(ctx, message.elements || [], img.width);
+                const redactedUrl = canvas.toDataURL('image/jpeg', 0.95);
 
                 sendResponse({
                     success: true,
-                    redactedUrl: canvas.toDataURL('image/jpeg', 0.95),
+                    redactedUrl,
                     manifest,
                     latencyMs: vision.latencyMs,
-                    visionMode: vision.mode
+                    visionMode: vision.mode,
+                    device: vision.device || modelState?.device || null,
+                    maskMs: Math.round(performance.now() - maskStart),
                 });
             } catch (err) {
-                sendResponse({ success: false, error: err.message });
+                sendResponse({ success: false, code: err.code || 'VISION_FAILED', error: err.message });
             }
         };
-        img.onerror = () => sendResponse({ success: false, error: 'Could not decode the screenshot' });
+        img.onerror = () => sendResponse({ success: false, code: 'BAD_IMAGE', error: 'Could not decode the screenshot' });
         img.src = message.image;
 
         // Keep the channel open for the async response

@@ -2,10 +2,14 @@
 	"manifest_version": 3,
 	"name": "Privag AI",
 	"version": "1.0",
+	"icons": {
+		"16": "icons/icon16.png",
+		"32": "icons/icon32.png",
+		"48": "icons/icon48.png",
+		"128": "icons/icon128.png"
+	},
 	"permissions": [
-		"tabs",
 		"scripting",
-		"activeTab",
 		"offscreen",
 		"sidePanel",
 		"storage"
@@ -13,18 +17,40 @@
 	"content_security_policy": {
 		"extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
 	},
+	"cross_origin_embedder_policy": {
+		"value": "require-corp"
+	},
+	"cross_origin_opener_policy": {
+		"value": "same-origin"
+	},
 	"host_permissions": [
-		"http://localhost:5000/*",
-		"http://127.0.0.1:5000/*",
 		"<all_urls>"
 	],
 	"background": {
-		"service_worker": "background.js"
+		"service_worker": "background.js",
+		"scripts": ["background.js"]
 	},
 	"side_panel": {
 		"default_path": "sidepanel.html"
 	},
+	"sidebar_action": {
+		"default_panel": "sidepanel.html",
+		"default_title": "Privag AI"
+	},
 	"action": {
-		"default_title": "Open Privag AI Side Panel"
+		"default_title": "Open Privag AI Side Panel",
+		"default_icon": {
+			"16": "icons/icon16.png",
+			"32": "icons/icon32.png"
+		}
+	},
+	"browser_specific_settings": {
+		"gecko": {
+			"id": "privag-ai@bytehackerz.example",
+			"strict_min_version": "140.0",
+			"data_collection_permissions": {
+				"required": ["websiteContent", "websiteActivity"]
+			}
+		}
 	}
 }

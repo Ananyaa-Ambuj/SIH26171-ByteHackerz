@@ -16,29 +16,30 @@
 
     <form id="setupForm" onsubmit="event.preventDefault(); save();">
         <h2>1. LLM Backend (OpenAI-Compatible)</h2>
+        <div id="envNote" class="hint" style="display: none;"></div>
 
         <div class="form-group">
             <label for="llmUrl">LLM API Base URL</label>
-            <div class="hint">Compatible with local vLLM, Ollama, LM Studio, or cloud providers (e.g. <code>http://localhost:11434/v1</code>, <code>http://192.168.1.100:8000/v1</code>, <code>https://api.openai.com/v1</code>)</div>
+            <div class="hint">Any OpenAI-compatible endpoint: local Ollama (<code>http://localhost:11434/v1</code>), vLLM (<code>http://localhost:8000/v1</code>), LM Studio, or a cloud provider. Every sanitized screenshot, its redaction manifest and the task are sent here.</div>
             <input type="url" id="llmUrl" placeholder="http://localhost:11434/v1" required>
         </div>
 
         <div class="form-group">
-            <label for="llmApiKey">API Key (Optional)</label>
-            <div class="hint">Optional for local or intranet instances. Required for cloud models.</div>
-            <input type="password" id="llmApiKey" placeholder="sk-...">
+            <label for="llmApiKey">API Key (Optional) <span id="keyStatus"></span></label>
+            <div class="hint">Not needed for a local Ollama or vLLM. The saved key is never shown again; leave this blank to keep it. To remove it, delete <code>llm_api_key</code> from <code>server/config.json</code>.</div>
+            <input type="password" id="llmApiKey" placeholder="No key saved" autocomplete="off">
         </div>
 
         <div class="form-group">
             <label for="llmModel">Model Name</label>
-            <div class="hint">The target model identifier (e.g. <code>Qwen/Qwen2.5-VL-7B-Instruct</code>, <code>moondream</code>, <code>gemma4</code>)</div>
-            <input type="text" id="llmModel" placeholder="Qwen/Qwen2.5-VL-7B-Instruct" value="Qwen/Qwen2.5-VL-7B-Instruct">
+            <div class="hint">The model identifier on that endpoint. Gemma 4 31B-it: Ollama <code>gemma4:31b-it-q4_K_M</code>, vLLM <code>google/gemma-4-31B-it</code>.</div>
+            <input type="text" id="llmModel" placeholder="gemma4:31b-it-q4_K_M" required>
         </div>
 
         <div class="form-group">
             <label for="systemPrompt">System Prompt</label>
-            <div class="hint">The agent prompt instructing the VLM to handle privacy redactions (black boxes, blur, fake data).</div>
-            <textarea id="systemPrompt"></textarea>
+            <div class="hint">Tells the model how to read the redactions (black boxes, solid masks, look-alike values). The default lives in <code>server/config.default.json</code>.</div>
+            <textarea id="systemPrompt" required></textarea>
         </div>
 
         <button type="submit" class="btn-primary">Save</button>
